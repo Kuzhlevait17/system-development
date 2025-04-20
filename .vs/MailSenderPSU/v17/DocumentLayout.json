@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\obakh\\source\\repos\\MailSenderPSU\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{85841409-3CEA-4742-9590-099FABA321DE}|MailSenderPSU\\MailSenderPSU.vcxproj|C:\\Users\\obakh\\source\\repos\\MailSenderPSU\\MailSenderPSU\\MailSenderPSU.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{85841409-3CEA-4742-9590-099FABA321DE}|MailSenderPSU\\MailSenderPSU.vcxproj|solutionrelative:MailSenderPSU\\MailSenderPSU.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 1,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedHeight": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "MailSenderPSU.cpp",
+              "DocumentMoniker": "C:\\Users\\obakh\\source\\repos\\MailSenderPSU\\MailSenderPSU\\MailSenderPSU.cpp",
+              "RelativeDocumentMoniker": "MailSenderPSU\\MailSenderPSU.cpp",
+              "ToolTip": "C:\\Users\\obakh\\source\\repos\\MailSenderPSU\\MailSenderPSU\\MailSenderPSU.cpp",
+              "RelativeToolTip": "MailSenderPSU\\MailSenderPSU.cpp",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAK8AAABXAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
+              "WhenOpened": "2025-04-16T06:49:10.711Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
