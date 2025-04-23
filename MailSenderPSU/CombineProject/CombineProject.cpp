@@ -56,7 +56,7 @@ void checkDay()
             // Функция для проверки на выходной день
     auto isWeekend = [](int dayOfWeek)
     {
-            return (dayOfWeek == 0, dayOfWeek == 6); // Воскресенье - 0, Суббота - 6
+            return (dayOfWeek == 0 || dayOfWeek == 6); // Воскресенье - 0, Суббота - 6
     };
 
             // Получаем текущее время.
