@@ -4,20 +4,20 @@
 #include <iostream>
 #include <cstring>
 
-                    // Конструктор по умолчанию
+                    // РљРѕРЅСЃС‚СЂСѓРєС‚РѕСЂ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
 EmailSender::EmailSender()
 {
-                    // Первая инициализация, готовимся к работе с libcurl.
+                    // РџРµСЂРІР°СЏ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ, РіРѕС‚РѕРІРёРјСЃСЏ Рє СЂР°Р±РѕС‚Рµ СЃ libcurl.
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
-                    // Деструктор по умолчанию
+                    // Р”РµСЃС‚СЂСѓРєС‚РѕСЂ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
 EmailSender::~EmailSender()
 {
     curl_global_cleanup();
 }
 
-                    // Сеттер, в который ставим все настройки для отправителя emailа
+                    // РЎРµС‚С‚РµСЂ, РІ РєРѕС‚РѕСЂС‹Р№ СЃС‚Р°РІРёРј РІСЃРµ РЅР°СЃС‚СЂРѕР№РєРё РґР»СЏ РѕС‚РїСЂР°РІРёС‚РµР»СЏ emailР°
 void EmailSender::SetSettings(const string& username, const string& password, const string& smtp_server,const string& mail_from)
 {
     username_ = username;
@@ -26,119 +26,119 @@ void EmailSender::SetSettings(const string& username, const string& password, co
     mail_from_ = mail_from;
 }
 
-                    // Сеттер, который устанавливает тему сообщения.
+                    // РЎРµС‚С‚РµСЂ, РєРѕС‚РѕСЂС‹Р№ СѓСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ С‚РµРјСѓ СЃРѕРѕР±С‰РµРЅРёСЏ.
 void EmailSender::SetSubject(const string& subject)
 {
     subject_ = subject;
 }
 
-                    // Сеттер, который устанавливает тело сообщения.
+                    // РЎРµС‚С‚РµСЂ, РєРѕС‚РѕСЂС‹Р№ СѓСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ С‚РµР»Рѕ СЃРѕРѕР±С‰РµРЅРёСЏ.
 void EmailSender::SetBody(const string& body)
 {
     body_ = body;
 }
 
-                    // Сеттер, который устанавливает получателей.
+                    // РЎРµС‚С‚РµСЂ, РєРѕС‚РѕСЂС‹Р№ СѓСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РїРѕР»СѓС‡Р°С‚РµР»РµР№.
 void EmailSender::SetRecipients(const vector<string>& recipients)
 {
     recipients_ = recipients;
 }
 
-                    // Добавляем в recipients все emailы
+                    // Р”РѕР±Р°РІР»СЏРµРј РІ recipients РІСЃРµ emailС‹
 void EmailSender::AddRecipient(const string& email)
 {
     recipients_.push_back(email);
 }
 
 
-                    // Вычисляем и сохраняем длину строки
+                    // Р’С‹С‡РёСЃР»СЏРµРј Рё СЃРѕС…СЂР°РЅСЏРµРј РґР»РёРЅСѓ СЃС‚СЂРѕРєРё
 EmailSender::ReadData::ReadData(const char* str)
     : source(str),
     size(str ? strlen(str) : 0)
 {
 }
 
-// Функция, которая используется для чтения данных из источника и передачи их в буфер
+// Р¤СѓРЅРєС†РёСЏ, РєРѕС‚РѕСЂР°СЏ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґР»СЏ С‡С‚РµРЅРёСЏ РґР°РЅРЅС‹С… РёР· РёСЃС‚РѕС‡РЅРёРєР° Рё РїРµСЂРµРґР°С‡Рё РёС… РІ Р±СѓС„РµСЂ
 size_t EmailSender::read_function(char* buffer, size_t size, size_t nitems, ReadData* data)
 {
 
-  //       вычисляем общий размер данных для чтения.
-  //       size - размер одного элемента данных (в байтах)
-  //       nitems - количество данных (в байтах) которое нужно посчитать  
+  //       РІС‹С‡РёСЃР»СЏРµРј РѕР±С‰РёР№ СЂР°Р·РјРµСЂ РґР°РЅРЅС‹С… РґР»СЏ С‡С‚РµРЅРёСЏ.
+  //       size - СЂР°Р·РјРµСЂ РѕРґРЅРѕРіРѕ СЌР»РµРјРµРЅС‚Р° РґР°РЅРЅС‹С… (РІ Р±Р°Р№С‚Р°С…)
+  //       nitems - РєРѕР»РёС‡РµСЃС‚РІРѕ РґР°РЅРЅС‹С… (РІ Р±Р°Р№С‚Р°С…) РєРѕС‚РѕСЂРѕРµ РЅСѓР¶РЅРѕ РїРѕСЃС‡РёС‚Р°С‚СЊ  
 
     size_t len = size * nitems;
     if (len > data->size) 
     {
-        // проверяем, что не вышли за пределы доступных данных
+        // РїСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РЅРµ РІС‹С€Р»Рё Р·Р° РїСЂРµРґРµР»С‹ РґРѕСЃС‚СѓРїРЅС‹С… РґР°РЅРЅС‹С…
         len = data->size;
     }
     if (len > 0)
     {
-        memcpy(buffer, data->source, len); // Копируем данные в буфер обмена.
-        data->source += len;               // Обновляем указатель и размер данных
+        memcpy(buffer, data->source, len); // РљРѕРїРёСЂСѓРµРј РґР°РЅРЅС‹Рµ РІ Р±СѓС„РµСЂ РѕР±РјРµРЅР°.
+        data->source += len;               // РћР±РЅРѕРІР»СЏРµРј СѓРєР°Р·Р°С‚РµР»СЊ Рё СЂР°Р·РјРµСЂ РґР°РЅРЅС‹С…
         data->size -= len;
     }
     return len;
 }
 
 
-// Функция, которая отправляет email-сообщения
+// Р¤СѓРЅРєС†РёСЏ, РєРѕС‚РѕСЂР°СЏ РѕС‚РїСЂР°РІР»СЏРµС‚ email-СЃРѕРѕР±С‰РµРЅРёСЏ
 bool EmailSender::sendToAll()
 {
-                    // Проверяем, что пароль и имя пользователя установлены.
+                    // РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РїР°СЂРѕР»СЊ Рё РёРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ СѓСЃС‚Р°РЅРѕРІР»РµРЅС‹.
     if (username_.empty() || password_.empty()) 
     {
-        cerr << "Пароль и имя пользователя для отправки сообщений не заполнены." << endl;
+        cerr << "РџР°СЂРѕР»СЊ Рё РёРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РґР»СЏ РѕС‚РїСЂР°РІРєРё СЃРѕРѕР±С‰РµРЅРёР№ РЅРµ Р·Р°РїРѕР»РЅРµРЅС‹." << endl;
         return false;
     }
 
-                    // Проверяем, что smtp сервер установлен.
+                    // РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ smtp СЃРµСЂРІРµСЂ СѓСЃС‚Р°РЅРѕРІР»РµРЅ.
     if (smtp_server_.empty()) 
     {
-        cerr << "Сервер SMTP не определен." << endl;
+        cerr << "РЎРµСЂРІРµСЂ SMTP РЅРµ РѕРїСЂРµРґРµР»РµРЅ." << endl;
         return false;
     }
                 
-                    // Проверяем, что есть получатели сообщений.
+                    // РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РµСЃС‚СЊ РїРѕР»СѓС‡Р°С‚РµР»Рё СЃРѕРѕР±С‰РµРЅРёР№.
     if (recipients_.empty())
     {
-        cerr << "Получатели письма не установлены." << endl;
+        cerr << "РџРѕР»СѓС‡Р°С‚РµР»Рё РїРёСЃСЊРјР° РЅРµ СѓСЃС‚Р°РЅРѕРІР»РµРЅС‹." << endl;
         return false;
     }
 
-                    // Провреяем, что есть тема письма.
-                    // Почему не работает то....
+                    // РџСЂРѕРІСЂРµСЏРµРј, С‡С‚Рѕ РµСЃС‚СЊ С‚РµРјР° РїРёСЃСЊРјР°.
+                    // РџРѕС‡РµРјСѓ РЅРµ СЂР°Р±РѕС‚Р°РµС‚ С‚Рѕ....
     if (subject_.empty())
     {
-        cerr << "Тема письма не объявлена." << endl;
+        cerr << "РўРµРјР° РїРёСЃСЊРјР° РЅРµ РѕР±СЉСЏРІР»РµРЅР°." << endl;
         return false;
     }
     
-                    // Проверяем, что есть тело письма.
+                    // РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РµСЃС‚СЊ С‚РµР»Рѕ РїРёСЃСЊРјР°.
     if (body_.empty())
     {
-        cerr << "Тело письма не объявлено." << endl;
+        cerr << "РўРµР»Рѕ РїРёСЃСЊРјР° РЅРµ РѕР±СЉСЏРІР»РµРЅРѕ." << endl;
         return false;
     }
 
-                    // Инициализируем curl сессию.
+                    // РРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј curl СЃРµСЃСЃРёСЋ.
     CURL* curl = curl_easy_init();
     if (!curl) 
     {
-        cerr << "Ошибка при работе curl" << endl;
+        cerr << "РћС€РёР±РєР° РїСЂРё СЂР°Р±РѕС‚Рµ curl" << endl;
         return false;
     }
 
-                    // Устанавливаем параметры подключения: Имя 
-                    // пользователя, пароль, SMTP сервер, отправитель.
+                    // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј РїР°СЂР°РјРµС‚СЂС‹ РїРѕРґРєР»СЋС‡РµРЅРёСЏ: РРјСЏ 
+                    // РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ, РїР°СЂРѕР»СЊ, SMTP СЃРµСЂРІРµСЂ, РѕС‚РїСЂР°РІРёС‚РµР»СЊ.
     curl_easy_setopt(curl, CURLOPT_USERNAME, username_.c_str());
     curl_easy_setopt(curl, CURLOPT_PASSWORD, password_.c_str());
     curl_easy_setopt(curl, CURLOPT_URL, smtp_server_.c_str());
     curl_easy_setopt(curl, CURLOPT_MAIL_FROM, mail_from_.c_str());
 
-                    // Формируем список получателей
+                    // Р¤РѕСЂРјРёСЂСѓРµРј СЃРїРёСЃРѕРє РїРѕР»СѓС‡Р°С‚РµР»РµР№
     struct curl_slist* recipients = nullptr;
-                    // Заполняем recipients emailами из вектора.
+                    // Р—Р°РїРѕР»РЅСЏРµРј recipients emailР°РјРё РёР· РІРµРєС‚РѕСЂР°.
     for (const auto& email : recipients_) 
     {
         recipients = curl_slist_append(recipients, email.c_str());
@@ -147,39 +147,39 @@ bool EmailSender::sendToAll()
 
     string email_text =
         "From: " + mail_from_ + "\r\n" +
-        "To: " + recipients_[0] + "\r\n" +        // Первый получатель в поле "To" ?? Поменять надо как-то... :(
+        "To: " + recipients_[0] + "\r\n" +        // РџРµСЂРІС‹Р№ РїРѕР»СѓС‡Р°С‚РµР»СЊ РІ РїРѕР»Рµ "To" ?? РџРѕРјРµРЅСЏС‚СЊ РЅР°РґРѕ РєР°Рє-С‚Рѕ... :(
         "Subject: " + subject_ + "\r\n" +
-        "\r\n" +                                  // Пустая строка разделяет заголовки и тело
+        "\r\n" +                                  // РџСѓСЃС‚Р°СЏ СЃС‚СЂРѕРєР° СЂР°Р·РґРµР»СЏРµС‚ Р·Р°РіРѕР»РѕРІРєРё Рё С‚РµР»Рѕ
         body_ + "\r\n";
 
-                                                  // Собираем текст для отправки сообщения на почту
+                                                  // РЎРѕР±РёСЂР°РµРј С‚РµРєСЃС‚ РґР»СЏ РѕС‚РїСЂР°РІРєРё СЃРѕРѕР±С‰РµРЅРёСЏ РЅР° РїРѕС‡С‚Сѓ
     ReadData data(email_text.c_str());
     curl_easy_setopt(curl, CURLOPT_READDATA, &data);
     curl_easy_setopt(curl, CURLOPT_READFUNCTION, read_function);
 
-                                                 // Настройки SMTP
-    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); // Включаем отладку.
+                                                 // РќР°СЃС‚СЂРѕР№РєРё SMTP
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); // Р’РєР»СЋС‡Р°РµРј РѕС‚Р»Р°РґРєСѓ.
     curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
     curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
-                                                 // Проверяем сертефикат.
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-                                                 // Проверяем имя хоста.
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+                                                 // РџСЂРѕРІРµСЂСЏРµРј СЃРµСЂС‚РµС„РёРєР°С‚.
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+                                                 // РџСЂРѕРІРµСЂСЏРµРј РёРјСЏ С…РѕСЃС‚Р°.
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 
-                                                // Отправка письма
+                                                // РћС‚РїСЂР°РІРєР° РїРёСЃСЊРјР°
     CURLcode res = curl_easy_perform(curl);
 
-    // Очистка ресурсов
+    // РћС‡РёСЃС‚РєР° СЂРµСЃСѓСЂСЃРѕРІ
     curl_slist_free_all(recipients);
     curl_easy_cleanup(curl);
         
-                                                // Если получилось что-то не так, то выводим ошибку.
+                                                // Р•СЃР»Рё РїРѕР»СѓС‡РёР»РѕСЃСЊ С‡С‚Рѕ-С‚Рѕ РЅРµ С‚Р°Рє, С‚Рѕ РІС‹РІРѕРґРёРј РѕС€РёР±РєСѓ.
     if (res != CURLE_OK) 
     {
-        cerr << "Не удалось отправить сообщение: " << curl_easy_strerror(res) << endl;
+        cerr << "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ: " << curl_easy_strerror(res) << endl;
         return false;
     }
-                                                // Иначе выводим скольким сотрудникам пришло сообщение.
-    cout << "Email успешно были отправлены " << recipients_.size() << " получателям" << endl;
+                                                // РРЅР°С‡Рµ РІС‹РІРѕРґРёРј СЃРєРѕР»СЊРєРёРј СЃРѕС‚СЂСѓРґРЅРёРєР°Рј РїСЂРёС€Р»Рѕ СЃРѕРѕР±С‰РµРЅРёРµ.
+    cout << "Email СѓСЃРїРµС€РЅРѕ Р±С‹Р»Рё РѕС‚РїСЂР°РІР»РµРЅС‹ " << recipients_.size() << " РїРѕР»СѓС‡Р°С‚РµР»СЏРј" << endl;
     return true;
 }
