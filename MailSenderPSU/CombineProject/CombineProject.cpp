@@ -1,13 +1,52 @@
-﻿#include <windows.h>
+#include <windows.h>
 #include <string>
 #include <iostream>
 #include <sqlite3.h>
+#include "sqlite3.h"
 #include <vector>
 #include <ctime>
+#include <sstream>
+#include <algorithm>
+#include <iomanip>
 #include "SQLC.h"
 #include "EmailSMTP.h"
 
 using namespace std;
+
+bool GetBirthdayEmailsToday(vector<string>& emails, sqlite3* db) { //Функция поиска именинника
+    time_t now = time(nullptr);
+    tm localTime;
+    localtime_s(&localTime, &now); //Сегодняшняя дата
+
+    char today_dd_mm[6]; // Форматируем день и месяц в "DD.MM"
+    snprintf(today_dd_mm, sizeof(today_dd_mm), "%02d.%02d", localTime.tm_mday, localTime.tm_mon + 1);
+
+    const char* sql = "SELECT email FROM employees WHERE birthday LIKE ? || '%';";  //Поиск
+    sqlite3_stmt* stmt;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        cerr << "Ошибка подготовки запроса: " << sqlite3_errmsg(db) << endl;
+        return false;
+    }
+
+    if (sqlite3_bind_text(stmt, 1, today_dd_mm, 5, SQLITE_STATIC) != SQLITE_OK) {
+        cerr << "Ошибка привязки параметра: " << sqlite3_errmsg(db) << endl;
+        sqlite3_finalize(stmt);
+        return false;
+    }
+
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char* email = sqlite3_column_text(stmt, 0);
+        if (email) {
+            emails.push_back(reinterpret_cast<const char*>(email));  //Добавляем именинников
+            found = true;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return found;
+}
 
             // Функция, которая определяет какой сегондя день - выходной(праздничный день) или рабочий.
 void checkDay()
@@ -94,7 +133,6 @@ void checkDay()
     }
 }
 
-
 bool ReadEmails(vector<string>& emails, sqlite3* db)
 {
       const char* sql = "SELECT email FROM employees;"; // ?
@@ -145,10 +183,11 @@ bool sendEmail(const vector<string>& emails)
                 // Устанавливаем тему сообщения.
                 // Почему-то не работает тема.... :(
                 // Потом нужно поменять тему.
+     // Кодируем тему в Base64 и добавляем MIME-формат
     SMTP.SetSubject("Мне грустно...");
                // Объявляем тело сообщения.
                // Потом нужно будет поменять на нормальное сообщение...
-    SMTP.SetBody("Никто не пришел на мою фанвстречу в честь моего дня рождения....");
+    SMTP.SetBody("это соо должно прийти всем кроме сашки (сори за ночной спам) вот ща стопудово ");
                // Получатели сообщения.
     SMTP.SetRecipients(emails);
                 // Если все сообщения отправились, то выводим в буфер, что все хорошо.
@@ -176,12 +215,33 @@ int main() {
                 // База данных, в которой хранится информация о каждом сотруднике компании в виде
                 // ID / ИМЯ ФАМИЛИЯ / EMAIL / ДЕНЬ РОЖДЕНИЯ
                 // Для тестов нужно менять ссылку соответственно??
-    if (sqlite3_open("C:\\Users\\lukuz\\source\\repos\\smtptest\\system-development\\proekt\\proekt\\employees.db", &db) != SQLITE_OK) 
+    if (sqlite3_open("C:\\Program Files\\SQLiteStudio\\file\\employees.db", &db) != SQLITE_OK) 
     {
         cerr << "Не удалось открыть базу данных: " << sqlite3_errmsg(db) << endl;
         return 1;
     }
-
+    
+    const char* check_sql = "SELECT birthday FROM employees LIMIT 5;"; //Ищем именинников
+    sqlite3_stmt* check_stmt;
+    if (sqlite3_prepare_v2(db, check_sql, -1, &check_stmt, nullptr) == SQLITE_OK) {
+        cout << "Проверка формата дат в БД:" << endl;
+        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            const unsigned char* date = sqlite3_column_text(check_stmt, 0);
+            cout << " - " << (date ? reinterpret_cast<const char*>(date) : "NULL") << endl;
+        }
+        sqlite3_finalize(check_stmt);
+    }
+    vector<string> birthday_emails;
+    GetBirthdayEmailsToday(birthday_emails, db);
+    if (birthday_emails.empty()) {
+        cout << "Сегодня нет именинников." << endl;
+    }
+    else {
+        cout << "Найдены именинники: " << endl;
+        for (const auto& email : birthday_emails) {
+            cout << "  " << email << endl;
+        }
+    }
                 // Читаем email-адреса
     vector<string> emails;
     ReadEmails(emails, db);
@@ -192,7 +252,7 @@ int main() {
         sqlite3_close(db);
         return 1;
     }
-
+   
     if (emails.empty()) 
     {
         cout << "Не найдено ни одного email-адреса." << endl;
@@ -207,19 +267,22 @@ int main() {
             cout << "  " << email << endl;
         }
     }
-
+    vector<string> other_emails; //Добавляем в отдельный вектор людей, которым должно прийти напоминание поздравить
+    for (const string& email : emails) {
+        if (find(birthday_emails.begin(), birthday_emails.end(), email) == birthday_emails.end()) {
+            other_emails.push_back(email); 
+        }
+    }
                 // Проверяем какой сегодня день.
     checkDay();
-
                 // Отправляем письма и проверяем, что есть email-адреса и что не произошло ошибок.
-    if (!emails.empty()) 
+    if (!other_emails.empty())
     {
-        if (!sendEmail(emails))
+        if (!sendEmail(other_emails))
         {
             cerr << "Произошла ошибка при отправке писем" << endl;
         }
     }
-
                 // Закрываем базу данных.
     sqlite3_close(db);
 
