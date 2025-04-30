@@ -205,8 +205,8 @@ bool sendEmail(const vector<string>& emails)
 }
 
 int main() {
-    SetConsoleCP(1251);
-    SetConsoleOutputCP(1251);
+    SetConsoleOutputCP(CP_UTF8); 
+    SetConsoleCP(CP_UTF8);
 
     cout << "Программа запущена." << endl;
 
@@ -235,6 +235,7 @@ int main() {
     GetBirthdayEmailsToday(birthday_emails, db);
     if (birthday_emails.empty()) {
         cout << "Сегодня нет именинников." << endl;
+        exit(0);
     }
     else {
         cout << "Найдены именинники: " << endl;
