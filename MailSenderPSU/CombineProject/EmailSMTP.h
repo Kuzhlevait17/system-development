@@ -41,6 +41,8 @@ public:
              // Функция, которая добавляет получателей сообщения.
     void AddRecipient(const string& email);
 
+    void SetAttachment(const string& file_path); // Установка пути к вложению
+
 private:
 
              // Структура, хранящая данные, которые могут быть использованы для
@@ -56,7 +58,8 @@ private:
 
              // Функция для чтения данных и передачи их в буфер(Используется для отладки)?
     static size_t read_function(char* buffer, size_t size, size_t nitems, ReadData* data);
-
+    static size_t read_file_callback(void* ptr, size_t size, size_t nmemb, FILE* stream); // Функция чтения файла
+    static string base64_encode_file(const string& file_path); // Кодирование файла в Base64
 
 
     string username_;               // Имя отправителя.
@@ -66,6 +69,7 @@ private:
     string subject_;                // Заголовок письма.
     string body_;                   // Тело письма
     vector<string> recipients_;     // Вектор, содержащий всех получателей сообщения.
+    string attachment_path_; // Путь к файлу вложения
 };
 
 #endif // EMAILSMTP_H

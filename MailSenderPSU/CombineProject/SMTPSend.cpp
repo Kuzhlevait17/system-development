@@ -3,6 +3,11 @@
 #include <sqlite3.h>
 #include <iostream>
 #include <cstring>
+#include <fstream>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/buffer.h>
+#include <algorithm>
 
                     // Конструктор по умолчанию
 EmailSender::EmailSender()
@@ -50,6 +55,44 @@ void EmailSender::AddRecipient(const string& email)
     recipients_.push_back(email);
 }
 
+void EmailSender::SetAttachment(const string& file_path) {
+    attachment_path_ = file_path;
+}
+
+string EmailSender::base64_encode_file(const string& file_path) {
+    ifstream file(file_path, ios::binary);
+    if (!file) {
+        cerr << "Не удалось открыть файл для кодирования: " << file_path << endl;
+        return "";
+    }
+
+    // Читаем весь файл
+    string content((istreambuf_iterator<char>(file)),
+        istreambuf_iterator<char>());
+
+    BIO* bio, * b64;
+    BUF_MEM* bufferPtr;
+
+    b64 = BIO_new(BIO_f_base64());
+    bio = BIO_new(BIO_s_mem());
+    bio = BIO_push(b64, bio);
+
+    BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL);
+    BIO_write(bio, content.c_str(), content.length());
+    BIO_flush(bio);
+    BIO_get_mem_ptr(bio, &bufferPtr);
+
+    string result(bufferPtr->data, bufferPtr->length);
+    BIO_free_all(bio);
+
+    return result;
+}
+
+// Функция для чтения файла (используется при отправке вложения)
+size_t EmailSender::read_file_callback(void* ptr, size_t size, size_t nmemb, FILE* stream) {
+    size_t retcode = fread(ptr, size, nmemb, stream);
+    return retcode;
+}
 
                     // Вычисляем и сохраняем длину строки
 EmailSender::ReadData::ReadData(const char* str)
@@ -121,65 +164,121 @@ bool EmailSender::sendToAll()
         return false;
     }
 
-                    // Инициализируем curl сессию.
+    // Проверка существования файла вложения
+    if (attachment_path_.empty()) {
+        cerr << "Путь к вложению не указан." << endl;
+        return false;
+    }
+
+    FILE* file = nullptr;
+    errno_t err = fopen_s(&file, attachment_path_.c_str(), "rb");
+    if (err != 0 || !file) {
+        cerr << "Не удалось открыть файл вложения: " << attachment_path_ << endl;
+        return false;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    rewind(file);
+
     CURL* curl = curl_easy_init();
-    if (!curl) 
-    {
+    if (!curl) {
         cerr << "Ошибка при работе curl" << endl;
         return false;
     }
 
-                    // Устанавливаем параметры подключения: Имя 
-                    // пользователя, пароль, SMTP сервер, отправитель.
+    // Устанавливаем параметры подключения
     curl_easy_setopt(curl, CURLOPT_USERNAME, username_.c_str());
     curl_easy_setopt(curl, CURLOPT_PASSWORD, password_.c_str());
     curl_easy_setopt(curl, CURLOPT_URL, smtp_server_.c_str());
     curl_easy_setopt(curl, CURLOPT_MAIL_FROM, mail_from_.c_str());
 
-                    // Формируем список получателей
+    // Формируем список получателей
     struct curl_slist* recipients = nullptr;
-                    // Заполняем recipients emailами из вектора.
-    for (const auto& email : recipients_) 
-    {
+    for (const auto& email : recipients_) {
         recipients = curl_slist_append(recipients, email.c_str());
     }
     curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
 
-    string email_text =
-        "From: " + mail_from_ + "\r\n" +
-        "To: " + recipients_[0] + "\r\n" +        // Первый получатель в поле "To" ?? Поменять надо как-то... :(
-        "Subject: " + subject_ + "\r\n" +
-        "\r\n" +                                  // Пустая строка разделяет заголовки и тело
-        body_ + "\r\n";
+    // Создаем MIME сообщение
+    curl_mime* mime = curl_mime_init(curl);
 
-                                                  // Собираем текст для отправки сообщения на почту
-    ReadData data(email_text.c_str());
-    curl_easy_setopt(curl, CURLOPT_READDATA, &data);
-    curl_easy_setopt(curl, CURLOPT_READFUNCTION, read_function);
+    // Часть с текстом сообщения
+    curl_mimepart* part = curl_mime_addpart(mime);
+    curl_mime_data(part, body_.c_str(), CURL_ZERO_TERMINATED);
+    curl_mime_type(part, "text/plain");
 
-                                                 // Настройки SMTP
-    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); // Включаем отладку.
-    curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+    // Добавляем вложение, если оно есть
+    if (!attachment_path_.empty()) {
+        // Получаем имя файла и расширение
+        size_t last_slash = attachment_path_.find_last_of("\\/");
+        size_t last_dot = attachment_path_.find_last_of('.');
+
+        string filename = (last_slash != string::npos) ?
+            attachment_path_.substr(last_slash + 1) :
+            attachment_path_;
+
+        string extension = (last_dot != string::npos && last_dot > last_slash) ?
+            attachment_path_.substr(last_dot + 1) : "";
+
+        // Определяем Content-Type по расширению
+        string content_type = "application/octet-stream";
+        transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+        if (extension == "jpg" || extension == "jpeg") content_type = "image/jpeg";
+        else if (extension == "png") content_type = "image/png";
+        else if (extension == "gif") content_type = "image/gif";
+        else if (extension == "pdf") content_type = "application/pdf";
+
+        // Добавляем часть с вложением
+        curl_mimepart* attach_part = curl_mime_addpart(mime);
+        curl_mime_filedata(attach_part, attachment_path_.c_str());
+        curl_mime_type(attach_part, content_type.c_str());
+        curl_mime_name(attach_part, filename.c_str());
+        curl_mime_encoder(attach_part, "base64"); // Пусть Curl сам кодирует в Base64
+
+        // Для изображений можно добавить Content-ID для встраивания в HTML
+        if (content_type.find("image/") != string::npos) {
+            string content_id = "<" + filename + ">";
+            curl_mime_headers(attach_part, NULL, 1); // Очищаем старые заголовки
+            curl_mime_name(attach_part, NULL); // Убираем имя, если нужно встроенное изображение
+            curl_mime_data_cb(attach_part, -1,
+                [](char* buffer, size_t size, size_t nitems, void* arg) -> size_t {
+                    FILE* file = static_cast<FILE*>(arg);
+                    if (!file) return CURL_READFUNC_ABORT;
+                    return fread(buffer, size, nitems, file);
+                },
+                NULL,
+                [](void* arg) {
+                    if (arg) {
+                        FILE* file = static_cast<FILE*>(arg);
+                        fclose(file);
+                    }
+                },
+                file);
+        }
+    }
+    curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+
+    // Настройки SMTP
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); // Включаем отладку
     curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
-                                                 // Проверяем сертефикат.
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-                                                 // Проверяем имя хоста.
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 
-                                                // Отправка письма
+    // Отправка письма
     CURLcode res = curl_easy_perform(curl);
 
     // Очистка ресурсов
     curl_slist_free_all(recipients);
+    curl_mime_free(mime);
     curl_easy_cleanup(curl);
-        
-                                                // Если получилось что-то не так, то выводим ошибку.
-    if (res != CURLE_OK) 
-    {
+
+    if (res != CURLE_OK) {
         cerr << "Не удалось отправить сообщение: " << curl_easy_strerror(res) << endl;
         return false;
     }
-                                                // Иначе выводим скольким сотрудникам пришло сообщение.
+
     cout << "Email успешно были отправлены " << recipients_.size() << " получателям" << endl;
     return true;
 }

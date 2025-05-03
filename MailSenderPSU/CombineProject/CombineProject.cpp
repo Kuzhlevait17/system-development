@@ -10,10 +10,11 @@
 #include <iomanip>
 #include "SQLC.h"
 #include "EmailSMTP.h"
+#include <fstream>
 
 using namespace std;
 
-bool GetBirthdayEmailsToday(vector<string>& emails, sqlite3* db) { //Функция поиска именинника
+bool GetBirthdayEmailsToday(vector<string>& emails, vector<string>& text_ids, sqlite3* db) { //Функция поиска именинника
     time_t now = time(nullptr);
     tm localTime;
     localtime_s(&localTime, &now); //Сегодняшняя дата
@@ -21,7 +22,7 @@ bool GetBirthdayEmailsToday(vector<string>& emails, sqlite3* db) { //Функц�
     char today_dd_mm[6]; // Форматируем день и месяц в "DD.MM"
     snprintf(today_dd_mm, sizeof(today_dd_mm), "%02d.%02d", localTime.tm_mday, localTime.tm_mon + 1);
 
-    const char* sql = "SELECT email FROM employees WHERE birthday LIKE ? || '%';";  //Поиск
+    const char* sql = "SELECT id, email FROM employees WHERE birthday LIKE ? || '%';";  //Поиск
     sqlite3_stmt* stmt;
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -37,9 +38,11 @@ bool GetBirthdayEmailsToday(vector<string>& emails, sqlite3* db) { //Функц�
 
     bool found = false;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        const unsigned char* email = sqlite3_column_text(stmt, 0);
+        int id = sqlite3_column_int(stmt, 0);
+        const unsigned char* email = sqlite3_column_text(stmt, 1);
         if (email) {
-            emails.push_back(reinterpret_cast<const char*>(email));  //Добавляем именинников
+            text_ids.push_back(to_string(id));
+            emails.push_back(reinterpret_cast<const char*>(email));
             found = true;
         }
     }
@@ -172,25 +175,38 @@ bool ReadEmails(vector<string>& emails, sqlite3* db)
 
 
                 // Функция, которая отправляет email-сообщение
-bool sendEmail(const vector<string>& emails) 
+bool sendEmail(const vector<string>& emails, const vector<string>& text_ids, const string& images_folder)
 {
                 // Объект SMTP класса EmailSender
     EmailSender SMTP;
                 // Устанавливаем соответствующие настройки - Имя пользователя(домена?), 
                 // пароль, SMTP-сервер, email пользователя(домена?)
-    SMTP.SetSettings("bo5sovb@yandex.com", "ipcftirvudiodaox",
-        "smtps://smtp.yandex.ru:465", "bo5sovb@yandex.com");
+    SMTP.SetSettings(
+        "b1971ss@mail.ru",          // Логин от Mail.ru
+        "pUdQrE3evHbRGNctUwq1",     // Пароль приложения
+        "smtp://smtp.mail.ru:587",
+        "b1971ss@mail.ru");
                 // Устанавливаем тему сообщения.
                 // Почему-то не работает тема.... :(
                 // Потом нужно поменять тему.
      // Кодируем тему в Base64 и добавляем MIME-формат
-    SMTP.SetSubject("Мне грустно...");
+    SMTP.SetSubject("ДР");
                // Объявляем тело сообщения.
                // Потом нужно будет поменять на нормальное сообщение...
-    SMTP.SetBody("это соо должно прийти всем кроме сашки (сори за ночной спам) вот ща стопудово ");
+    SMTP.SetBody("Привет");
                // Получатели сообщения.
     SMTP.SetRecipients(emails);
                 // Если все сообщения отправились, то выводим в буфер, что все хорошо.
+
+    for (const string& id : text_ids) {
+        string image_path = images_folder + "\\" + id + ".jpg"; // Например: "D:\\images\\ID123.jpg"
+        ifstream file(image_path);
+        if (file.good()) {
+            SMTP.SetAttachment(image_path);
+            break; // Отправляем первое найденное изображение
+        }
+    }
+
     if (SMTP.sendToAll()) 
     {
         cout << "Сообщение успешно отправлено!" << endl;
@@ -232,15 +248,16 @@ int main() {
         sqlite3_finalize(check_stmt);
     }
     vector<string> birthday_emails;
-    GetBirthdayEmailsToday(birthday_emails, db);
+    vector<string> birthday_text_ids;
+    GetBirthdayEmailsToday(birthday_emails, birthday_text_ids, db);
     if (birthday_emails.empty()) {
         cout << "Сегодня нет именинников." << endl;
         exit(0);
     }
     else {
         cout << "Найдены именинники: " << endl;
-        for (const auto& email : birthday_emails) {
-            cout << "  " << email << endl;
+        for (size_t i = 0; i < birthday_emails.size(); ++i) {
+            cout << "  " << birthday_text_ids[i] << ": " << birthday_emails[i] << endl;
         }
     }
                 // Читаем email-адреса
@@ -274,16 +291,15 @@ int main() {
             other_emails.push_back(email); 
         }
     }
+
+    if (!other_emails.empty()) {
+        string images_folder = "C:\\Users\\Arseniy\\source\\repos\\proektiki\\CombineProject\\photos"; // Папка с изображениями
+        sendEmail(other_emails, birthday_text_ids, images_folder);
+    }
+
                 // Проверяем какой сегодня день.
     checkDay();
                 // Отправляем письма и проверяем, что есть email-адреса и что не произошло ошибок.
-    if (!other_emails.empty())
-    {
-        if (!sendEmail(other_emails))
-        {
-            cerr << "Произошла ошибка при отправке писем" << endl;
-        }
-    }
                 // Закрываем базу данных.
     sqlite3_close(db);
 
