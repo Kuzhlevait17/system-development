@@ -1,0 +1,2 @@
+﻿  AutomaticMailing.cpp
+C:\Users\lukuz\source\repos\AutomaticMailing\AutomaticMailing\AutomaticMailing.cpp(153,51): warning C4267: аргумент: преобразование из "size_t" в "int"; возможна потеря данных
