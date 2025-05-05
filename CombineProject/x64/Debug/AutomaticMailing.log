@@ -1,0 +1,6 @@
+﻿  AutomaticMailing.cpp
+C:\Users\lukuz\source\repos\AutomaticMailing\AutomaticMailing\AutomaticMailing.cpp(153,51): warning C4267: аргумент: преобразование из "size_t" в "int"; возможна потеря данных
+LINK : warning LNK4098: библиотека по умолчанию "LIBCMT" конфликтует с использованием других библиотек; используйте /NODEFAULTLIB:library
+  AutomaticMailing.vcxproj -> C:\Users\lukuz\source\repos\AutomaticMailing\x64\Debug\AutomaticMailing.exe
+  "pwsh.exe" не является внутренней или внешней
+  командой, исполняемой программой или пакетным файлом.
