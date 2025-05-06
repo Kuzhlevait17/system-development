@@ -9,21 +9,24 @@
 #include <openssl/buffer.h>
 #include <algorithm>
 
-                    // Конструктор по умолчанию
+using namespace std;
+
+// Конструктор по умолчанию
 EmailSender::EmailSender()
 {
-                    // Первая инициализация, готовимся к работе с libcurl.
+    // Первая инициализация, готовимся к работе с libcurl.
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
-                    // Деструктор по умолчанию
+// Деструктор по умолчанию
 EmailSender::~EmailSender()
 {
     curl_global_cleanup();
 }
 
-                    // Сеттер, в который ставим все настройки для отправителя emailа
-void EmailSender::SetSettings(const string& username, const string& password, const string& smtp_server,const string& mail_from)
+// Сеттер настроек
+void EmailSender::SetSettings(const string& username, const string& password, 
+                            const string& smtp_server, const string& mail_from)
 {
     username_ = username;
     password_ = password;
@@ -31,34 +34,36 @@ void EmailSender::SetSettings(const string& username, const string& password, co
     mail_from_ = mail_from;
 }
 
-                    // Сеттер, который устанавливает тему сообщения.
+// Сеттер темы сообщения
 void EmailSender::SetSubject(const string& subject)
 {
     subject_ = subject;
 }
 
-                    // Сеттер, который устанавливает тело сообщения.
+// Сеттер тела сообщения
 void EmailSender::SetBody(const string& body)
 {
     body_ = body;
 }
 
-                    // Сеттер, который устанавливает получателей.
+// Сеттер получателей
 void EmailSender::SetRecipients(const vector<string>& recipients)
 {
     recipients_ = recipients;
 }
 
-                    // Добавляем в recipients все emailы
+// Добавление получателя
 void EmailSender::AddRecipient(const string& email)
 {
     recipients_.push_back(email);
 }
 
+// Установка вложения
 void EmailSender::SetAttachment(const string& file_path) {
     attachment_path_ = file_path;
 }
 
+// Кодирование файла в base64 (не используется в текущей реализации)
 string EmailSender::base64_encode_file(const string& file_path) {
     ifstream file(file_path, ios::binary);
     if (!file) {
@@ -66,9 +71,7 @@ string EmailSender::base64_encode_file(const string& file_path) {
         return "";
     }
 
-    // Читаем весь файл
-    string content((istreambuf_iterator<char>(file)),
-        istreambuf_iterator<char>());
+    string content((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
 
     BIO* bio, * b64;
     BUF_MEM* bufferPtr;
@@ -94,92 +97,56 @@ size_t EmailSender::read_file_callback(void* ptr, size_t size, size_t nmemb, FIL
     return retcode;
 }
 
-                    // Вычисляем и сохраняем длину строки
+// Структура для чтения данных
 EmailSender::ReadData::ReadData(const char* str)
     : source(str),
     size(str ? strlen(str) : 0)
 {
 }
 
-// Функция, которая используется для чтения данных из источника и передачи их в буфер
+// Функция чтения данных для curl
 size_t EmailSender::read_function(char* buffer, size_t size, size_t nitems, ReadData* data)
 {
-
-  //       вычисляем общий размер данных для чтения.
-  //       size - размер одного элемента данных (в байтах)
-  //       nitems - количество данных (в байтах) которое нужно посчитать  
-
     size_t len = size * nitems;
-    if (len > data->size) 
-    {
-        // проверяем, что не вышли за пределы доступных данных
+    if (len > data->size) {
         len = data->size;
     }
-    if (len > 0)
-    {
-        memcpy(buffer, data->source, len); // Копируем данные в буфер обмена.
-        data->source += len;               // Обновляем указатель и размер данных
+    if (len > 0) {
+        memcpy(buffer, data->source, len);
+        data->source += len;
         data->size -= len;
     }
     return len;
 }
 
-
-// Функция, которая отправляет email-сообщения
+// Основная функция отправки email
 bool EmailSender::sendToAll()
 {
-                    // Проверяем, что пароль и имя пользователя установлены.
-    if (username_.empty() || password_.empty()) 
-    {
+    // Проверка обязательных полей
+    if (username_.empty() || password_.empty()) {
         cerr << "Пароль и имя пользователя для отправки сообщений не заполнены." << endl;
         return false;
     }
 
-                    // Проверяем, что smtp сервер установлен.
-    if (smtp_server_.empty()) 
-    {
+    if (smtp_server_.empty()) {
         cerr << "Сервер SMTP не определен." << endl;
         return false;
     }
-                
-                    // Проверяем, что есть получатели сообщений.
-    if (recipients_.empty())
-    {
+
+    if (recipients_.empty()) {
         cerr << "Получатели письма не установлены." << endl;
         return false;
     }
 
-                    // Провреяем, что есть тема письма.
-                    // Почему не работает то....
-    if (subject_.empty())
-    {
+    if (subject_.empty()) {
         cerr << "Тема письма не объявлена." << endl;
         return false;
     }
-    
-                    // Проверяем, что есть тело письма.
-    if (body_.empty())
-    {
+
+    if (body_.empty()) {
         cerr << "Тело письма не объявлено." << endl;
         return false;
     }
-
-    // Проверка существования файла вложения
-    if (attachment_path_.empty()) {
-        cerr << "Путь к вложению не указан." << endl;
-        return false;
-    }
-
-    FILE* file = nullptr;
-    errno_t err = fopen_s(&file, attachment_path_.c_str(), "rb");
-    if (err != 0 || !file) {
-        cerr << "Не удалось открыть файл вложения: " << attachment_path_ << endl;
-        return false;
-    }
-
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    rewind(file);
 
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -203,21 +170,31 @@ bool EmailSender::sendToAll()
     // Создаем MIME сообщение
     curl_mime* mime = curl_mime_init(curl);
 
-    // Часть с текстом сообщения
-    curl_mimepart* part = curl_mime_addpart(mime);
-    curl_mime_data(part, body_.c_str(), CURL_ZERO_TERMINATED);
-    curl_mime_type(part, "text/plain");
+    // Часть с текстом сообщения (HTML)
+    curl_mimepart* text_part = curl_mime_addpart(mime);
+    curl_mime_data(text_part, body_.c_str(), CURL_ZERO_TERMINATED);
+    curl_mime_type(text_part, "text/html; charset=UTF-8");
 
     // Добавляем вложение, если оно есть
     if (!attachment_path_.empty()) {
-        // Получаем имя файла и расширение
-        size_t last_slash = attachment_path_.find_last_of("\\/");
-        size_t last_dot = attachment_path_.find_last_of('.');
+        FILE* file = nullptr;
+        errno_t err = fopen_s(&file, attachment_path_.c_str(), "rb");
+        if (err != 0 || !file) {
+            cerr << "Не удалось открыть файл вложения: " << attachment_path_ << endl;
+            curl_mime_free(mime);
+            curl_slist_free_all(recipients);
+            curl_easy_cleanup(curl);
+            return false;
+        }
 
+        // Получаем имя файла
+        size_t last_slash = attachment_path_.find_last_of("\\/");
         string filename = (last_slash != string::npos) ?
             attachment_path_.substr(last_slash + 1) :
             attachment_path_;
 
+        // Получаем расширение файла
+        size_t last_dot = attachment_path_.find_last_of('.');
         string extension = (last_dot != string::npos && last_dot > last_slash) ?
             attachment_path_.substr(last_dot + 1) : "";
 
@@ -234,30 +211,17 @@ bool EmailSender::sendToAll()
         curl_mimepart* attach_part = curl_mime_addpart(mime);
         curl_mime_filedata(attach_part, attachment_path_.c_str());
         curl_mime_type(attach_part, content_type.c_str());
-        curl_mime_name(attach_part, filename.c_str());
-        curl_mime_encoder(attach_part, "base64"); // Пусть Curl сам кодирует в Base64
+        curl_mime_filename(attach_part, filename.c_str());
+        curl_mime_encoder(attach_part, "base64");
 
         // Для изображений можно добавить Content-ID для встраивания в HTML
         if (content_type.find("image/") != string::npos) {
             string content_id = "<" + filename + ">";
-            curl_mime_headers(attach_part, NULL, 1); // Очищаем старые заголовки
-            curl_mime_name(attach_part, NULL); // Убираем имя, если нужно встроенное изображение
-            curl_mime_data_cb(attach_part, -1,
-                [](char* buffer, size_t size, size_t nitems, void* arg) -> size_t {
-                    FILE* file = static_cast<FILE*>(arg);
-                    if (!file) return CURL_READFUNC_ABORT;
-                    return fread(buffer, size, nitems, file);
-                },
-                NULL,
-                [](void* arg) {
-                    if (arg) {
-                        FILE* file = static_cast<FILE*>(arg);
-                        fclose(file);
-                    }
-                },
-                file);
+            curl_mime_headers(attach_part, nullptr, 1);
+            curl_mime_name(attach_part, content_id.c_str());
         }
     }
+
     curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
 
     // Настройки SMTP
@@ -270,6 +234,7 @@ bool EmailSender::sendToAll()
     CURLcode res = curl_easy_perform(curl);
 
     // Очистка ресурсов
+    if (file) fclose(file);
     curl_slist_free_all(recipients);
     curl_mime_free(mime);
     curl_easy_cleanup(curl);
@@ -279,6 +244,6 @@ bool EmailSender::sendToAll()
         return false;
     }
 
-    cout << "Email успешно были отправлены " << recipients_.size() << " получателям" << endl;
+    cout << "Email успешно отправлены " << recipients_.size() << " получателям" << endl;
     return true;
 }

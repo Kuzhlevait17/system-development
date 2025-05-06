@@ -2,27 +2,60 @@
 #include <string>
 #include <iostream>
 #include <sqlite3.h>
-#include "sqlite3.h"
 #include <vector>
 #include <ctime>
 #include <sstream>
 #include <algorithm>
 #include <iomanip>
+#include <fstream>
+#include <regex>
 #include "SQLC.h"
 #include "EmailSMTP.h"
-#include <fstream>
 
 using namespace std;
 
-bool GetBirthdayEmailsToday(vector<string>& emails, vector<string>& text_ids, sqlite3* db) { //Функция поиска именинника
+// Структура для хранения данных сотрудника
+struct Employee {
+    int id;
+    string name;
+    string email;
+    string birthday;
+};
+
+// Функция загрузки шаблона письма
+string loadTemplate(const string& filename, const string& fullName) {
+    ifstream file(filename);
+    if (!file.is_open()) {
+        cerr << "Не удалось открыть шаблон: " << filename << endl;
+        return "";
+    }
+
+    stringstream buffer;
+    buffer << file.rdbuf();
+    string content = buffer.str();
+
+    // Удаляем BOM, если он есть (UTF-8 BOM: 0xEF,0xBB,0xBF)
+    if (content.size() >= 3 &&
+        static_cast<unsigned char>(content[0]) == 0xEF &&
+        static_cast<unsigned char>(content[1]) == 0xBB &&
+        static_cast<unsigned char>(content[2]) == 0xBF) {
+        content = content.substr(3);
+    }
+
+    content = regex_replace(content, regex("\\{фио сотрудника\\}"), fullName);
+    return content;
+}
+
+// Функция поиска именинников
+bool GetBirthdayEmployeesToday(vector<Employee>& birthdayEmployees, sqlite3* db) {
     time_t now = time(nullptr);
     tm localTime;
-    localtime_s(&localTime, &now); //Сегодняшняя дата
+    localtime_s(&localTime, &now);
 
     char today_dd_mm[6]; // Форматируем день и месяц в "DD.MM"
     snprintf(today_dd_mm, sizeof(today_dd_mm), "%02d.%02d", localTime.tm_mday, localTime.tm_mon + 1);
 
-    const char* sql = "SELECT id, email FROM employees WHERE birthday LIKE ? || '%';";  //Поиск
+    const char* sql = "SELECT id, name, email, birthday FROM employees WHERE birthday LIKE ? || '%';";
     sqlite3_stmt* stmt;
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -38,11 +71,14 @@ bool GetBirthdayEmailsToday(vector<string>& emails, vector<string>& text_ids, sq
 
     bool found = false;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        int id = sqlite3_column_int(stmt, 0);
-        const unsigned char* email = sqlite3_column_text(stmt, 1);
-        if (email) {
-            text_ids.push_back(to_string(id));
-            emails.push_back(reinterpret_cast<const char*>(email));
+        Employee emp;
+        emp.id = sqlite3_column_int(stmt, 0);
+        emp.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        emp.email = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        emp.birthday = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        
+        if (!emp.email.empty()) {
+            birthdayEmployees.push_back(emp);
             found = true;
         }
     }
@@ -51,84 +87,65 @@ bool GetBirthdayEmailsToday(vector<string>& emails, vector<string>& text_ids, sq
     return found;
 }
 
-            // Функция, которая определяет какой сегондя день - выходной(праздничный день) или рабочий.
-void checkDay()
-{
-            // Структура для хранения праздников
-    struct Holiday 
-    {
+// Функция, которая определяет какой сегодня день - выходной или рабочий
+void checkDay() {
+    // Структура для хранения праздников
+    struct Holiday {
         int day;
         int month;
     };
 
-            // Функция для проверки на праздник
-
-    auto isHoliday = [](int day, int month)
-        {
-            // Объявляем дни, в которые у нас государственные выходные.
-            vector<Holiday> holidays = 
-            {
-                {1, 1},   // Новый год
-                {2, 1},   // Новогодние каникулы
-                {3, 1},   // Новогодние каникулы
-                {4, 1},   // Новогодние каникулы
-                {5, 1},   // Новогодние каникулы
-                {6, 1},   // Новогодние каникулы
-                {7, 1},   // Рождество Христово
-                {8, 1},   // Новогодние каникулы
-                {23, 2},  // День защитника Отечества
-                {8, 3},   // Международный женский день
-                {1, 5},   // Праздник Весны и Труда
-                {9, 5},   // День Победы
-                {12, 6},  // День России
-                {4, 11}   // День народного единства
-            };
-
-            // Проверяем дату. Если у нас сегодня праздник, то выводим true.
-            for (const auto& holiday : holidays)
-            {
-                if (holiday.day == day && holiday.month == month)
-                {
-                    return true;
-                }
-            }
-            return false;
+    // Функция для проверки на праздник
+    auto isHoliday = [](int day, int month) {
+        vector<Holiday> holidays = {
+            {1, 1},   // Новый год
+            {2, 1},   // Новогодние каникулы
+            {3, 1},   // Новогодние каникулы
+            {4, 1},   // Новогодние каникулы
+            {5, 1},   // Новогодние каникулы
+            {6, 1},   // Новогодние каникулы
+            {7, 1},   // Рождество Христово
+            {8, 1},   // Новогодние каникулы
+            {23, 2},  // День защитника Отечества
+            {8, 3},   // Международный женский день
+            {1, 5},   // Праздник Весны и Труда
+            {9, 5},   // День Победы
+            {12, 6},  // День России
+            {4, 11}   // День народного единства
         };
 
-            // Функция для проверки на выходной день
-    auto isWeekend = [](int dayOfWeek)
-    {
-            return (dayOfWeek == 0 || dayOfWeek == 6); // Воскресенье - 0, Суббота - 6
+        for (const auto& holiday : holidays) {
+            if (holiday.day == day && holiday.month == month) {
+                return true;
+            }
+        }
+        return false;
     };
 
-            // Получаем текущее время.
-    time_t t = time(nullptr);
-            // Создаем структуру tm для хранения локального времени
-    tm currentTime;
+    // Функция для проверки на выходной день
+    auto isWeekend = [](int dayOfWeek) {
+        return (dayOfWeek == 0 || dayOfWeek == 6); // Воскресенье - 0, Суббота - 6
+    };
 
-            // Конвертируем time_t в локальное время 
+    // Получаем текущее время
+    time_t t = time(nullptr);
+    tm currentTime;
     localtime_s(&currentTime, &t);
 
-            // Извлекаем день и месяц.
+    // Извлекаем день и месяц
     int day = currentTime.tm_mday;
     int month = currentTime.tm_mon + 1;
 
-            // Создаем новую структуру tm и заполням ее.
+    // Вычисляем день недели
     tm timeInfo = {};
     timeInfo.tm_year = currentTime.tm_year;
     timeInfo.tm_mon = month - 1;
     timeInfo.tm_mday = day;
-
-            // Нормализуем структуру времени (корректируем недопустимые значения)
-            // И вычисляем день недели (tm_wday)
     mktime(&timeInfo);
-
-            // Получаем день недели. 0 - вс, 1 - пн... 6 - сб
     int dayOfWeek = timeInfo.tm_wday;
 
-            // Проверяем на выходной и выводим на экран.
-    if (isWeekend(dayOfWeek) || isHoliday(day, month))
-    {
+    // Проверяем на выходной и выводим на экран
+    if (isWeekend(dayOfWeek) || isHoliday(day, month)) {
         cout << "Сегодня выходной!" << endl;
     }
     else {
@@ -136,88 +153,91 @@ void checkDay()
     }
 }
 
-bool ReadEmails(vector<string>& emails, sqlite3* db)
-{
-      const char* sql = "SELECT email FROM employees;"; // ?
+// Функция чтения всех сотрудников из базы данных
+bool ReadAllEmployees(vector<Employee>& employees, sqlite3* db) {
+    const char* sql = "SELECT id, name, email, birthday FROM employees;";
+    sqlite3_stmt* stmt;
+    bool success = false;
 
-      // Указатель на подготовленное выражение 
-      sqlite3_stmt* stmt;
-
-      bool success = false;
-
-      // Подготавливаем SQL-запрос к выполнению
-   
-      if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK)
-     {
-          // Пошагово выполняем запрос (sqlite3_step)
-          // SQLITE_ROW означает, что есть доступная строка данных
-         while (sqlite3_step(stmt) == SQLITE_ROW) 
-         {
-             //Получаем текст из первого стоблца.
-            const unsigned char* emailText = sqlite3_column_text(stmt, 0);
-
-            // Если не пустое значение, то добавляем в вектор.
-            if (emailText)
-            {
-                        emails.push_back(reinterpret_cast<const char*>(emailText));
-                        success = true;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            Employee emp;
+            emp.id = sqlite3_column_int(stmt, 0);
+            emp.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            emp.email = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+            emp.birthday = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+            
+            if (!emp.email.empty()) {
+                employees.push_back(emp);
+                success = true;
             }
         }
-           // Освобождаем ресурсы на подготовленное выражение
-           sqlite3_finalize(stmt);
-      }
-     else
-     {
-           cerr << "Ошибка запроса: " << sqlite3_errmsg(db) << endl;
-     }
-            return success;
+        sqlite3_finalize(stmt);
+    }
+    else {
+        cerr << "Ошибка запроса: " << sqlite3_errmsg(db) << endl;
+    }
+
+    return success;
 }
 
-
-                // Функция, которая отправляет email-сообщение
-bool sendEmail(const vector<string>& emails, const vector<string>& text_ids, const string& images_folder)
-{
-                // Объект SMTP класса EmailSender
+// Функция отправки email
+bool sendEmail(const vector<Employee>& recipients, const vector<Employee>& birthdayEmployees, const string& images_folder) {
     EmailSender SMTP;
-                // Устанавливаем соответствующие настройки - Имя пользователя(домена?), 
-                // пароль, SMTP-сервер, email пользователя(домена?)
     SMTP.SetSettings(
         "b1971ss@mail.ru",          // Логин от Mail.ru
         "pUdQrE3evHbRGNctUwq1",     // Пароль приложения
         "smtp://smtp.mail.ru:587",
         "b1971ss@mail.ru");
-                // Устанавливаем тему сообщения.
-                // Почему-то не работает тема.... :(
-                // Потом нужно поменять тему.
-     // Кодируем тему в Base64 и добавляем MIME-формат
-    SMTP.SetSubject("ДР");
-               // Объявляем тело сообщения.
-               // Потом нужно будет поменять на нормальное сообщение...
-    SMTP.SetBody("Привет");
-               // Получатели сообщения.
-    SMTP.SetRecipients(emails);
-                // Если все сообщения отправились, то выводим в буфер, что все хорошо.
 
-    for (const string& id : text_ids) {
-        string image_path = images_folder + "\\" + id + ".jpg"; // Например: "D:\\images\\ID123.jpg"
+    // Для именинников
+    for (const auto& emp : birthdayEmployees) {
+        string htmlBody = loadTemplate("birthday_template.html", emp.name);
+        SMTP.SetSubject("С Днем Рождения!");
+        SMTP.SetBody(htmlBody);
+        SMTP.SetRecipients({ emp.email });
+
+        // Добавляем фото, если есть
+        string image_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
         ifstream file(image_path);
         if (file.good()) {
             SMTP.SetAttachment(image_path);
-            break; // Отправляем первое найденное изображение
+        }
+
+        cout << "Отправка поздравления на: " << emp.email << " (" << emp.name << ")..." << endl;
+        if (!SMTP.sendToAll()) {
+            cerr << "Ошибка при отправке на: " << emp.email << endl;
         }
     }
 
-    if (SMTP.sendToAll()) 
-    {
-        cout << "Сообщение успешно отправлено!" << endl;
-        return true;
+    // Для остальных сотрудников (напоминание поздравить)
+    vector<string> other_emails;
+    for (const auto& emp : recipients) {
+        bool isBirthdayEmployee = false;
+        for (const auto& bdEmp : birthdayEmployees) {
+            if (emp.email == bdEmp.email) {
+                isBirthdayEmployee = true;
+                break;
+            }
+        }
+        if (!isBirthdayEmployee) {
+            other_emails.push_back(emp.email);
+        }
     }
-                // Если возникла где-то ошибка, то выводим в буфер, что что-то пошло не так.
-    else 
-    {
-        cerr << "Ошибка при отправке сообщения" << endl;
-        return false;
+
+    if (!other_emails.empty()) {
+        SMTP.SetSubject("Не забудьте поздравить коллег!");
+        SMTP.SetBody("Сегодня день рождения у ваших коллег! Не забудьте их поздравить!");
+        SMTP.SetRecipients(other_emails);
+        
+        cout << "Отправка напоминаний " << other_emails.size() << " сотрудникам..." << endl;
+        if (!SMTP.sendToAll()) {
+            cerr << "Ошибка при отправке напоминаний" << endl;
+        }
     }
+
+    cout << "Рассылка завершена." << endl;
+    return true;
 }
 
 int main() {
@@ -226,18 +246,15 @@ int main() {
 
     cout << "Программа запущена." << endl;
 
-                // Открываем базу данных
+    // Открываем базу данных
     sqlite3* db;
-                // База данных, в которой хранится информация о каждом сотруднике компании в виде
-                // ID / ИМЯ ФАМИЛИЯ / EMAIL / ДЕНЬ РОЖДЕНИЯ
-                // Для тестов нужно менять ссылку соответственно??
-    if (sqlite3_open("C:\\Program Files\\SQLiteStudio\\file\\employees.db", &db) != SQLITE_OK) 
-    {
+    if (sqlite3_open("C:\\Program Files\\SQLiteStudio\\file\\employees.db", &db) != SQLITE_OK) {
         cerr << "Не удалось открыть базу данных: " << sqlite3_errmsg(db) << endl;
         return 1;
     }
-    
-    const char* check_sql = "SELECT birthday FROM employees LIMIT 5;"; //Ищем именинников
+
+    // Проверяем формат дат в БД
+    const char* check_sql = "SELECT birthday FROM employees LIMIT 5;";
     sqlite3_stmt* check_stmt;
     if (sqlite3_prepare_v2(db, check_sql, -1, &check_stmt, nullptr) == SQLITE_OK) {
         cout << "Проверка формата дат в БД:" << endl;
@@ -247,60 +264,50 @@ int main() {
         }
         sqlite3_finalize(check_stmt);
     }
-    vector<string> birthday_emails;
-    vector<string> birthday_text_ids;
-    GetBirthdayEmailsToday(birthday_emails, birthday_text_ids, db);
-    if (birthday_emails.empty()) {
+
+    // Ищем именинников
+    vector<Employee> birthdayEmployees;
+    if (!GetBirthdayEmployeesToday(birthdayEmployees, db)) {
+        cout << "Ошибка при поиске именинников." << endl;
+    }
+
+    if (birthdayEmployees.empty()) {
         cout << "Сегодня нет именинников." << endl;
-        exit(0);
     }
     else {
         cout << "Найдены именинники: " << endl;
-        for (size_t i = 0; i < birthday_emails.size(); ++i) {
-            cout << "  " << birthday_text_ids[i] << ": " << birthday_emails[i] << endl;
+        for (const auto& emp : birthdayEmployees) {
+            cout << "  " << emp.id << ": " << emp.name << " (" << emp.email << ")" << endl;
         }
     }
-                // Читаем email-адреса
-    vector<string> emails;
-    ReadEmails(emails, db);
 
-    if (!ReadEmails(emails, db)) 
-    {
-        cerr << "Не удалось прочитать email-адреса из базы данных" << endl;
+    // Читаем всех сотрудников
+    vector<Employee> allEmployees;
+    if (!ReadAllEmployees(allEmployees, db)) {
+        cerr << "Не удалось прочитать данные сотрудников из базы данных" << endl;
         sqlite3_close(db);
         return 1;
     }
-   
-    if (emails.empty()) 
-    {
-        cout << "Не найдено ни одного email-адреса." << endl;
+
+    if (allEmployees.empty()) {
+        cout << "Не найдено ни одного сотрудника." << endl;
     }
-    else
-    {
-                // Если найдены какие-либо email адреса,то выводим их на экран
-                // Возможно это не нужно.
-        cout << "Найдено " << emails.size() << " email-адресов:" << endl;
-        for (const auto& email : emails) 
-        {
-            cout << "  " << email << endl;
-        }
-    }
-    vector<string> other_emails; //Добавляем в отдельный вектор людей, которым должно прийти напоминание поздравить
-    for (const string& email : emails) {
-        if (find(birthday_emails.begin(), birthday_emails.end(), email) == birthday_emails.end()) {
-            other_emails.push_back(email); 
-        }
+    else {
+        cout << "Всего сотрудников: " << allEmployees.size() << endl;
     }
 
-    if (!other_emails.empty()) {
-        string images_folder = "C:\\Users\\Arseniy\\source\\repos\\proektiki\\CombineProject\\photos"; // Папка с изображениями
-        sendEmail(other_emails, birthday_text_ids, images_folder);
-    }
-
-                // Проверяем какой сегодня день.
+    // Проверяем какой сегодня день
     checkDay();
-                // Отправляем письма и проверяем, что есть email-адреса и что не произошло ошибок.
-                // Закрываем базу данных.
+
+    // Отправляем письма
+    if (!allEmployees.empty()) {
+        string images_folder = "C:\\Users\\Arseniy\\source\\repos\\proektiki\\CombineProject\\photos";
+        if (!sendEmail(allEmployees, birthdayEmployees, images_folder)) {
+            cerr << "Произошла ошибка при отправке писем" << endl;
+        }
+    }
+
+    // Закрываем базу данных
     sqlite3_close(db);
 
     return 0;
