@@ -487,10 +487,18 @@ string GenerateTemplate(ConfigReader& configReader,
     }
 
     vector<string> names;
+    vector<string> dates;  // Храним все уникальные даты
     for (const auto& emp : employees) {
         names.push_back(emp.name);
+        string emp_date = emp.birthday.substr(0, 5);  // Формат "DD.MM"
+
+        // Добавляем дату, если её ещё нет в списке
+        if (find(dates.begin(), dates.end(), emp_date) == dates.end()) {
+            dates.push_back(emp_date);
+        }
     }
 
+    // Формируем строку с именами
     string joined_names;
     if (names.size() == 1) {
         joined_names = names[0];
@@ -502,20 +510,33 @@ string GenerateTemplate(ConfigReader& configReader,
         }
     }
 
-    string date = date_override.empty() ? employees[0].birthday.substr(0, 5) : date_override;
+    // Формируем строку с датами
+    string joined_dates;
+    if (!date_override.empty()) {
+        joined_dates = date_override;  // Если передана переопределённая дата (например, текущая)
+    }
+    else if (dates.size() == 1) {
+        joined_dates = dates[0];
+    }
+    else {
+        for (size_t i = 0; i < dates.size(); ++i) {
+            if (i > 0) joined_dates += (i == dates.size() - 1) ? " и " : ", ";
+            joined_dates += dates[i];
+        }
+    }
 
+    // Заменяем плейсхолдеры в шаблоне
     size_t pos;
     while ((pos = template_str.find("{names}")) != string::npos) {
         template_str.replace(pos, 7, joined_names);
     }
 
     while ((pos = template_str.find("{date}")) != string::npos) {
-        template_str.replace(pos, 6, date);
+        template_str.replace(pos, 6, joined_dates);
     }
 
     return template_str;
 }
-
 // Функция нахождения именниников
 bool GetBirthdayEmployees(vector<Employee>& birthdayEmployees, sqlite3* db)
 {
@@ -860,7 +881,7 @@ bool SendLate(const vector<Employee>& all_employees,
 
 int main() {
     SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8); // для корректного ввода, если нужно
+    SetConsoleCP(CP_UTF8);
     LOG(" ");
     LOG("Программа запущена");
 
@@ -871,223 +892,110 @@ int main() {
         return 1;
     }
     else {
-        LOG("конфигурационный файл config.ini успешно загружен.");
+        LOG("Конфигурационный файл config.ini успешно загружен.");
     }
-    
+
     if (config.GetString("db_path").empty()) {
-        LOG("Ошибка: Параметр 'db_path' не найден в конфигурации"); 
+        LOG("Ошибка: Параметр 'db_path' не найден в конфигурации");
         return 1;
     }
-    else {
-        LOG("Параметр 'db_path' успешно найден в конфигурации");
-    }
 
-    // 4. Открытие БД
+    // Открытие БД
     sqlite3* db;
-    if (sqlite3_open( config.GetString("db_path").c_str(), &db) != SQLITE_OK) {
-        LOG("Не удалось открыть базу данных: " + string ( sqlite3_errmsg(db)));
+    if (sqlite3_open(config.GetString("db_path").c_str(), &db) != SQLITE_OK) {
+        LOG("Не удалось открыть базу данных: " + string(sqlite3_errmsg(db)));
         return 1;
     }
-    else {
-        LOG("база данных: " + string(sqlite3_errmsg(db)) + " успешно открыта.");
-    }
 
-    // Проверка и добавление поля last_congratulated
-    bool columnExists = false;
-    const char* pragma_sql = "PRAGMA table_info(employees);";
-    sqlite3_stmt* pragma_stmt;
-    if (sqlite3_prepare_v2(db, pragma_sql, -1, &pragma_stmt, nullptr) == SQLITE_OK)
-    {
-        while (sqlite3_step(pragma_stmt) == SQLITE_ROW)
-        {
-            const unsigned char* colName = sqlite3_column_text(pragma_stmt, 1);
-            if (colName && strcmp(reinterpret_cast<const char*>(colName), "last_congratulated") == 0) {
-                columnExists = true;
-                break;
-            }
-        }
-    }
-    sqlite3_finalize(pragma_stmt);
-
-    if (!columnExists)
-    {
-        LOG("Поле 'last_congratulated' не найдено. Добавляем..."); 
-        const char* alter_sql = "ALTER TABLE employees ADD COLUMN last_congratulated TEXT;";
-        char* errMsg = nullptr;
-        if (sqlite3_exec(db, alter_sql, nullptr, nullptr, &errMsg) != SQLITE_OK)
-        {
-            LOG("Ошибка при добавлении поля: " + string(errMsg));
-            sqlite3_free(errMsg);
-        }
-        else
-        {
-            LOG("Поле добавлено успешно."); 
-        }
-    }
-
+    // Получаем текущую дату
     time_t now = time(nullptr);
-    tm localTime;
-    localtime_s(&localTime, &now);
-    LOG("Текущая дата: " + to_string(localTime.tm_mday) + "." + to_string ( localTime.tm_mon + 1) + "." + to_string ( localTime.tm_year + 1900));
-    int day = localTime.tm_mday;
-    int month = localTime.tm_mon + 1;
-    int year = localTime.tm_year + 1900;
-    bool RestDay = IsDayOff(day, month, year);
-    vector<Employee> DayOffEmployees;
-    vector<Employee> birthdayEmployees;
+    tm tm_now;
+    localtime_s(&tm_now, &now);
+    int day = tm_now.tm_mday;
+    int month = tm_now.tm_mon + 1;
+    int year = tm_now.tm_year + 1900;
+    bool isDayOff = IsDayOff(day, month, year);
 
-    if (RestDay)
-    {
-        LOG("Сегодня выходной или праздник.");
- 
-        if (DayOffEmployees.empty())
-        {
-            LOG("Именинников в нерабочие дни не было."); 
+    // Читаем всех сотрудников
+    vector<Employee> allEmployees;
+    if (!ReadAllEmployees(allEmployees, db)) {
+        LOG("Не удалось прочитать сотрудников из базы.");
+        sqlite3_close(db);
+        return 1;
+    }
+
+    // Ищем именинников на текущий день
+    vector<Employee> birthdayEmployees;
+    GetBirthdayEmployees(birthdayEmployees, db);
+
+    // Проверяем, первый ли это рабочий день после выходных
+    bool isFirstWorkDayAfterBreak = !isDayOff && IsFirstWorkingDayAfterBreak();
+
+    // 1. Обработка именинников за выходные (если сегодня первый рабочий день)
+    if (isFirstWorkDayAfterBreak) {
+        vector<Employee> dayOffEmployees;
+        time_t cursor = now - 86400; // Начинаем с вчера
+
+        while (true) {
+            tm tm_cursor;
+            localtime_s(&tm_cursor, &cursor);
+            int d = tm_cursor.tm_mday;
+            int m = tm_cursor.tm_mon + 1;
+            int y = tm_cursor.tm_year + 1900;
+
+            // Если день рабочий - прекращаем поиск
+            if (!IsDayOff(d, m, y)) break;
+
+            // Ищем именинников за этот выходной день
+            char dd_mm[6];
+            snprintf(dd_mm, sizeof(dd_mm), "%02d.%02d", d, m);
+
+            const char* sql = "SELECT id, name, email, birthday FROM employees WHERE birthday LIKE ? || '%';";
+            sqlite3_stmt* stmt;
+            if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK &&
+                sqlite3_bind_text(stmt, 1, dd_mm, -1, SQLITE_TRANSIENT) == SQLITE_OK) {
+
+                while (sqlite3_step(stmt) == SQLITE_ROW) {
+                    Employee emp;
+                    emp.id = sqlite3_column_int(stmt, 0);
+                    emp.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+                    emp.email = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+                    emp.birthday = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+                    if (!emp.email.empty()) {
+                        dayOffEmployees.push_back(emp);
+                    }
+                }
+                sqlite3_finalize(stmt);
+            }
+            cursor -= 86400; // Переходим к предыдущему дню
         }
 
-        else
-        {
-            LOG("Найдено " + to_string(DayOffEmployees.size()) + " именинник(ов) в нерабочий день." );
+        // Отправляем письмо за выходные (если есть именинники)
+        if (!dayOffEmployees.empty()) {
+            LOG("Найдено именинников за выходные: " + to_string(dayOffEmployees.size()));
+            SendLate(allEmployees, dayOffEmployees,
+                config.GetString("photo_path"),
+                config.GetString("smtp_username"),
+                config.GetString("smtp_password"),
+                config.GetString("smtp_server"),
+                config.GetString("mail_from"),
+                db, config);
         }
     }
-    else
-    {
-        // Читаем всех сотрудников
-        vector<Employee> allEmployees;
-        if (!ReadAllEmployees(allEmployees, db))
-        {
-            LOG("Не удалось прочитать сотрудников из базы."); 
-            sqlite3_close(db);
-            return 1;
-        }
-        else {
-            LOG("Успешно удалось прочитать сотрудников из базы.");
-        }
 
-        if (IsFirstWorkingDayAfterBreak())
-        {
-            LOG("Первый рабочий день после выходных. Ищем именинников за выходные..."); 
-
-            time_t cursor = now - 86400;
-            while (true)
-            {
-                tm tm_cursor;
-                localtime_s(&tm_cursor, &cursor);
-
-                int d = tm_cursor.tm_mday;
-                int m = tm_cursor.tm_mon + 1;
-                int y = tm_cursor.tm_year + 1900;
-
-                if (!IsDayOff(d, m, y)) break;
-
-                char dd_mm[6];
-                snprintf(dd_mm, sizeof(dd_mm), "%02d.%02d", d, m);
-
-                const char* sql = "SELECT id, name, email, birthday FROM employees WHERE birthday LIKE ? || '%';";
-                sqlite3_stmt* stmt;
-
-                if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK &&
-                    sqlite3_bind_text(stmt, 1, dd_mm, -1, SQLITE_TRANSIENT) == SQLITE_OK)
-                {
-                    while (sqlite3_step(stmt) == SQLITE_ROW)
-                    {
-                        Employee emp;
-                        emp.id = sqlite3_column_int(stmt, 0);
-                        emp.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-                        emp.email = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-                        emp.birthday = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-                        if (!emp.email.empty()) 
-                        {
-                            DayOffEmployees.push_back(emp);
-                        }
-                    }
-                    sqlite3_finalize(stmt);
-                }
-
-                cursor -= 86400;
-            }
-
-            if (!DayOffEmployees.empty()) 
-            {
-                LOG("Найдено" + to_string(DayOffEmployees.size()) + " именинников за выходные."); 
-                string images_folder = config.GetString("photo_path").c_str();
-                if (!SendLate(allEmployees, DayOffEmployees, images_folder, config.GetString("smtp_username"), config.GetString("smtp_password"), \
-                    config.GetString("smtp_server"), config.GetString("mail_from"), db, config))
-                {
-                    LOG("Ошибка при отправке поздравлений за выходные."); 
-                }
-                else {
-                    LOG("Нет ошибок при отправке поздравлений за выходные.");
-                }
-            }
-            else
-            {
-                LOG("Именинников за выходные не найдено."); 
-            }
-
-            if (birthdayEmployees.empty()) 
-            {
-                LOG("Сегодня нет именинников."); 
-            }
-            else {
-                LOG("Найдены именинники : ");
-                for (const auto& emp : birthdayEmployees)
-                {
-                    cout << "  " << emp.id << ": " << emp.name << " (" << emp.email << ")" << endl;
-                }
-            }
-
-
-            if (!allEmployees.empty())
-            {
-                string images_folder = config.GetString("photo_path").c_str();
-                if (!sendEmail(allEmployees, birthdayEmployees, images_folder, config.GetString("smtp_username"), config.GetString("smtp_password"), \
-                    config.GetString("smtp_server"), config.GetString("mail_from"), db, config))
-                {
-                    LOG("Произошла ошибка при отправке писем"); 
-                }
-                else {
-                    LOG("Нет ошибок при отправке писем");
-                }
-            }
-
-        }
-        else
-        {
-            //// Сегодня обычный рабочий день, проверим именинников
-           if (birthdayEmployees.empty())
-            {
-                LOG("Сегодня нет именинников."); 
-            }
-            else
-            {
-                LOG("Найдены именинники: "); 
-                for (const auto& emp : birthdayEmployees)
-                {
-                    cout << "  " << emp.id << ": " << emp.name << " (" << emp.email << ")" << endl;
-                }
-            }
-
-
-            if (!allEmployees.empty())
-            {
-                string images_folder = config.GetString("photo_path").c_str();
-                if (!sendEmail(allEmployees, birthdayEmployees, images_folder, config.GetString("smtp_username"), config.GetString("smtp_password"), \
-                    config.GetString("smtp_server"), config.GetString("mail_from"), db, config))
-                {
-                    LOG("Произошла ошибка при отправке писем."); 
-                }
-                else {
-                    LOG("Нет ошибок при отправке писем");
-                }
-            }
-        }
+    // 2. Отправляем письмо за текущий день (если есть именинники и сегодня не выходной)
+    if (!isDayOff && !birthdayEmployees.empty()) {
+        LOG("Найдено именинников сегодня: " + to_string(birthdayEmployees.size()));
+        sendEmail(allEmployees, birthdayEmployees,
+            config.GetString("photo_path"), config.GetString("smtp_username"),
+            config.GetString("smtp_password"),
+            config.GetString("smtp_server"),
+            config.GetString("mail_from"),
+            db, config);
     }
 
     sqlite3_close(db);
     LOG("Программа завершена.");
     LOG(" ");
     return 0;
-    
-
 }
