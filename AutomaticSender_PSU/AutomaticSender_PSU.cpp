@@ -345,45 +345,84 @@ struct Employee
     string birthday;
 };
 
-string GenerateTemplate(const string& key, const vector<string>& names, const string& date)
+// Функция, которая вставляет html шаблон в письмо
+string GenerateTemplate(const string& key, const vector<Employee>& employees, const string& date_override = "")
 {
-    string joined_names;
+    vector<string> names;
+    for (const auto& emp : employees) 
+    {
+        names.push_back(emp.name);
+    }
 
-    if (names.size() == 1) {
+    string date;
+    if (!date_override.empty())
+    {
+        date = date_override;
+    }
+    else 
+    {
+        vector<string> dates;
+        for (const auto& emp : employees)
+        {
+            dates.push_back(emp.birthday.substr(0, 5));
+        }
+
+        // Склеиваем, если несколько разных дат
+        if (dates.size() == 1)
+        {
+            date = dates[0];
+        }
+        else {
+            for (size_t i = 0; i < dates.size(); ++i) 
+            {
+                if (i > 0) date += (i == dates.size() - 1) ? " и " : ", ";
+                date += dates[i];
+            }
+        }
+    }
+
+    string joined_names;
+    if (names.size() == 1)
+    {
         joined_names = names[0];
     }
     else {
-        for (size_t i = 0; i < names.size(); ++i) {
+        for (size_t i = 0; i < names.size(); ++i) 
+        {
             if (i > 0) joined_names += (i == names.size() - 1) ? " и " : ", ";
             joined_names += names[i];
         }
     }
 
-    if (key == "today_one") {
+    if (key == "today_one") 
+    {
         return "<html><body><h1>С Днём Рождения!</h1><p>Сегодня, " + date +
             ", празднует День рождения наш сотрудник " + joined_names +
             ". Не забудьте его поздравить! 🎉</p></body></html>";
     }
-    else if (key == "today_many") {
+    else if (key == "today_many") 
+    {
         return "<html><body><h1>С Днём Рождения!</h1><p>Сегодня, " + date +
             ", празднуют День рождения следующие сотрудники: " + joined_names +
             ". Не забудьте их поздравить! 🎉</p></body></html>";
     }
-    else if (key == "weekend_one") {
+    else if (key == "weekend_one") 
+    {
         return "<html><body><h1>С прошедшим Днём Рождения!</h1><p>В выходные, " + date +
             ", праздновал День рождения наш сотрудник " + joined_names +
             ". Не забудьте поздравить его с прошедшим праздником! 🎉</p></body></html>";
     }
-    else if (key == "weekend_many") {
+    else if (key == "weekend_many")
+    {
         return "<html><body><h1>С прошедшим Днём Рождения!</h1><p>В выходные, " + date +
             ", праздновали День рождения следующие сотрудники: " + joined_names +
             ". Не забудьте поздравить их с прошедшим праздником! 🎉</p></body></html>";
     }
 
-    return ""; // fallback
+    return "";
 }
 
-
+// Функция, которая определяет день рождения сотрудника 
 bool GetBirthdayEmployees(vector<Employee>& birthdayEmployees, sqlite3* db)
 {
     time_t now = time(nullptr);
@@ -549,6 +588,7 @@ void UpdateLastCongratulated(sqlite3* db, int employee_id)
     sqlite3_finalize(stmt);  // Освобождаем ресурсы запроса
 }
 
+// Функция которая определяет какой сегодня рабочий день(первый или нет)
 bool IsFirstWorkingDayAfterBreak()
 {
     time_t now = time(0);
@@ -587,21 +627,20 @@ bool IsFirstWorkingDayAfterBreak()
     return false;
 }
 
-
-// Функция отправки email
+// Функция отправки в рабочий день
 bool sendEmail(const vector<Employee>& all_employees,
     const vector<Employee>& birthday_employees,
     const string& images_folder,
     sqlite3* db)
 {
-    // 1. Получаем текущую дату (дд.мм)
+    // Получаем текущую дату
     time_t now = time(nullptr);
     tm tm_now;
     localtime_s(&tm_now, &now);
     char current_date[6];
     strftime(current_date, sizeof(current_date), "%d.%m", &tm_now);
 
-    // 2. Настройка SMTP
+    // Настройка SMTP
     EmailSender sender;
     sender.SetSettings(
         "b1971ss@mail.ru",
@@ -609,36 +648,39 @@ bool sendEmail(const vector<Employee>& all_employees,
         "smtp://smtp.mail.ru:587",
         "b1971ss@mail.ru");
 
-    // 3. Отправка уведомлений всем сотрудникам
+    // Отправка уведомлений всем сотрудникам
     if (!birthday_employees.empty()) {
         vector<string> all_emails;
-        for (const auto& emp : all_employees) {
+        for (const auto& emp : all_employees)
+        {
             all_emails.push_back(emp.email);
         }
 
-        vector<string> names;
-        for (const auto& emp : birthday_employees) names.push_back(emp.name);
-
         string template_key = (birthday_employees.size() == 1) ? "today_one" : "today_many";
-        string reminder_body = GenerateTemplate(template_key, names, current_date);
+        string reminder_body = GenerateTemplate(template_key, birthday_employees,current_date ); // Передаём список сотрудников
 
-        if (!reminder_body.empty() && !all_emails.empty()) {
+        if (!reminder_body.empty() && !all_emails.empty()) 
+        {
             sender.SetSubject("Не забудьте поздравить!");
             sender.SetBody(reminder_body);
             sender.SetRecipients(all_emails);
 
             // Прикрепляем фото всех именинников
-            for (const auto& emp : birthday_employees) {
+            for (const auto& emp : birthday_employees) 
+            {
                 string photo_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
-                if (ifstream(photo_path).good()) {
+                if (ifstream(photo_path).good())
+                {
                     sender.SetAttachment(photo_path);
                 }
             }
 
-            if (sender.sendToAll()) {
+            if (sender.sendToAll())
+            {
                 cout << "Уведомления отправлены всем сотрудникам: " << all_emails.size() << " адресов." << endl;
             }
-            else {
+            else
+            {
                 cerr << "Ошибка отправки уведомлений" << endl;
             }
         }
@@ -647,20 +689,11 @@ bool sendEmail(const vector<Employee>& all_employees,
     return true;
 }
 
-
+// Функция отправки сообщений за выходные
 bool SendLate(const vector<Employee>& all_employees,
     const vector<Employee>& missed_employees,
     const string& images_folder,
-    sqlite3* db)
-{
-    // 1. Получаем текущую дату (дд.мм)
-    time_t now = time(nullptr);
-    tm tm_now;
-    localtime_s(&tm_now, &now);
-    char current_date[6];
-    strftime(current_date, sizeof(current_date), "%d.%m", &tm_now);
-
-    // 2. Настройка SMTP
+    sqlite3* db) {
     EmailSender sender;
     sender.SetSettings(
         "b1971ss@mail.ru",
@@ -668,45 +701,57 @@ bool SendLate(const vector<Employee>& all_employees,
         "smtp://smtp.mail.ru:587",
         "b1971ss@mail.ru");
 
-    // 3. Отправка уведомлений всем сотрудникам
-    if (!missed_employees.empty()) {
+    if (!missed_employees.empty())
+    {
         vector<string> all_emails;
-        for (const auto& emp : all_employees) {
+        for (const auto& emp : all_employees) 
+        {
             all_emails.push_back(emp.email);
         }
 
-        vector<string> names;
-        for (const auto& emp : missed_employees) names.push_back(emp.name);
-
         string template_key = (missed_employees.size() == 1) ? "weekend_one" : "weekend_many";
-        string reminder_body = GenerateTemplate(template_key, names, current_date);
+        string reminder_body = GenerateTemplate(template_key, missed_employees);
 
-        if (!reminder_body.empty() && !all_emails.empty()) {
+        if (!reminder_body.empty() && !all_emails.empty())
+        {
             sender.SetSubject("Не забудьте поздравить коллег!");
             sender.SetBody(reminder_body);
             sender.SetRecipients(all_emails);
 
-            // Прикрепляем фото всех опоздавших именинников
-            for (const auto& emp : missed_employees) {
-                string photo_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
-                if (ifstream(photo_path).good()) {
+            // Отладочный вывод
+            cout << "Папка с изображениями: " << images_folder << endl;
 
+            for (const auto& emp : missed_employees) 
+            {
+                string photo_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
+                cout << "Проверка файла: " << photo_path << endl;
+
+                FILE* file = nullptr;
+                errno_t err = fopen_s(&file, photo_path.c_str(), "rb");
+                if (err == 0 && file != nullptr) 
+                {
+                    fclose(file);
                     sender.SetAttachment(photo_path);
+                    cout << "Файл прикреплён: " << photo_path << endl;
+                }
+                else {
+                    cerr << "Ошибка открытия файла: " << photo_path
+                        << " (код ошибки: " << err << ")" << endl;
                 }
             }
 
-            if (sender.sendToAll()) {
-                cout << "Уведомления отправлены всем сотрудникам: " << all_emails.size() << " адресов." << endl;
+            if (sender.sendToAll()) 
+            {
+                cout << "Уведомления отправлены." << endl;
             }
-            else {
-                cerr << "Ошибка отправки уведомлений" << endl;
+            else
+            {
+                cerr << "Ошибка отправки." << endl;
             }
         }
     }
-
     return true;
 }
-
 
 int main() {
     SetConsoleOutputCP(CP_UTF8);
@@ -719,7 +764,8 @@ int main() {
 
     // Открываем базу данных
     sqlite3* db;
-    if (sqlite3_open("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\SQLiteStudio\\file\\employees.db", &db) != SQLITE_OK) {
+    if (sqlite3_open("C:\\Users\\lukuz\\OneDrive\\Desktop\\system-development\\AutomaticSender_PSU\\employees.db", &db) != SQLITE_OK) 
+    {
         cerr << "Не удалось открыть базу данных: " << sqlite3_errmsg(db) << endl;
         return 1;
     }
@@ -820,14 +866,17 @@ int main() {
                 sqlite3_stmt* stmt;
 
                 if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK &&
-                    sqlite3_bind_text(stmt, 1, dd_mm, -1, SQLITE_TRANSIENT) == SQLITE_OK) {
-                    while (sqlite3_step(stmt) == SQLITE_ROW) {
+                    sqlite3_bind_text(stmt, 1, dd_mm, -1, SQLITE_TRANSIENT) == SQLITE_OK)
+                {
+                    while (sqlite3_step(stmt) == SQLITE_ROW)
+                    {
                         Employee emp;
                         emp.id = sqlite3_column_int(stmt, 0);
                         emp.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
                         emp.email = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
                         emp.birthday = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-                        if (!emp.email.empty()) {
+                        if (!emp.email.empty()) 
+                        {
                             DayOffEmployees.push_back(emp);
                         }
                     }
@@ -837,10 +886,12 @@ int main() {
                 cursor -= 86400;
             }
 
-            if (!DayOffEmployees.empty()) {
+            if (!DayOffEmployees.empty()) 
+            {
                 cout << "Найдено " << DayOffEmployees.size() << " именинников за выходные." << endl;
-                string images_folder = "C:\\Users\\cocac\\source\\repos\\proektiki\\system-development\\photos";
-                if (!SendLate(allEmployees, DayOffEmployees, images_folder, db)) {
+                string images_folder = "C:\\Users\\lukuz\\OneDrive\\Desktop\\system-development\\photos";
+                if (!SendLate(allEmployees, DayOffEmployees, images_folder, db))
+                {
                     cerr << "Ошибка при отправке поздравлений за выходные." << endl;
                 }
             }
@@ -849,36 +900,18 @@ int main() {
                 cout << "Именинников за выходные не найдено." << endl;
             }
 
-            //// Ищем именинников
-            //vector<Employee> birthdayEmployees;
-            //if (!GetBirthdayEmployeesToday(birthdayEmployees, db))
-            //{
-            //    cout << "Ошибка при поиске именинников." << endl;
-            //}
-
-            //if (birthdayEmployees.empty())
-            //{
-            //    cout << "Сегодня нет именинников." << endl;
-            //}
-            //else
-            //{
-            //    cout << "Найдены именинники: " << endl;
-            //    for (const auto& emp : birthdayEmployees)
-            //    {
-            //        cout << "  " << emp.id << ": " << emp.name << " (" << emp.email << ")" << endl;
-            //    }
-            //}
-
-
-            if (!GetBirthdayEmployees(birthdayEmployees, db)) {
+            if (!GetBirthdayEmployees(birthdayEmployees, db))
+            {
                 cout << "Ошибка при поиске именинников." << endl;
             }
-            else if (birthdayEmployees.empty()) {
+            else if (birthdayEmployees.empty()) 
+            {
                 cout << "Сегодня нет именинников." << endl;
             }
             else {
                 cout << "Найдены именинники: " << endl;
-                for (const auto& emp : birthdayEmployees) {
+                for (const auto& emp : birthdayEmployees)
+                {
                     cout << "  " << emp.id << ": " << emp.name << " (" << emp.email << ")" << endl;
                 }
             }
@@ -886,7 +919,7 @@ int main() {
 
             if (!allEmployees.empty())
             {
-                string images_folder = "C:\\Users\\cocac\\source\\repos\\proektiki\\system-development\\photos";
+                string images_folder = "C:\\Users\\lukuz\\OneDrive\\Desktop\\system-development\\photos";
                 if (!sendEmail(allEmployees, birthdayEmployees, images_folder, db))
                 {
                     cerr << "Произошла ошибка при отправке писем" << endl;
@@ -897,25 +930,6 @@ int main() {
         else
         {
             //// Сегодня обычный рабочий день, проверим именинников
-            //vector<Employee> birthdayEmployees;
-            //if (!GetBirthdayEmployeesToday(birthdayEmployees, db)) 
-            //{
-            //    cout << "Ошибка при поиске именинников." << endl;
-            //}
-
-            //if (birthdayEmployees.empty())
-            //{
-            //    cout << "Сегодня нет именинников." << endl;
-            //}
-            //else 
-            //{
-            //    cout << "Найдены именинники: " << endl;
-            //    for (const auto& emp : birthdayEmployees)
-            //    {
-            //        cout << "  " << emp.id << ": " << emp.name << " (" << emp.email << ")" << endl;
-            //    }
-            //}
-
             if (!GetBirthdayEmployees(birthdayEmployees, db))
             {
                 cout << "Ошибка при поиске именинников." << endl;
@@ -936,7 +950,7 @@ int main() {
 
             if (!allEmployees.empty())
             {
-                string images_folder = "C:\\Users\\cocac\\source\\repos\\proektiki\\system-development\\photos";
+                string images_folder = "C:\\Users\\lukuz\\OneDrive\\Desktop\\system-development\\photos";
                 if (!sendEmail(allEmployees, birthdayEmployees, images_folder, db))
                 {
                     cerr << "Произошла ошибка при отправке писем." << endl;
