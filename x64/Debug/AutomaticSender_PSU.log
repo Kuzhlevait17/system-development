@@ -1,0 +1,6 @@
+﻿  AutomaticSender_PSU.cpp
+C:\Users\lukuz\source\repos\AutomaticSender_PSU\AutomaticSender_PSU\AutomaticSender_PSU.cpp(155,51): warning C4267: аргумент: преобразование из "size_t" в "int"; возможна потеря данных
+LINK : warning LNK4098: библиотека по умолчанию "LIBCMT" конфликтует с использованием других библиотек; используйте /NODEFAULTLIB:library
+  AutomaticSender_PSU.vcxproj -> C:\Users\lukuz\source\repos\AutomaticSender_PSU\x64\Debug\AutomaticSender_PSU.exe
+  "pwsh.exe" не является внутренней или внешней
+  командой, исполняемой программой или пакетным файлом.
