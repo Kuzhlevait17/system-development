@@ -695,7 +695,7 @@ bool sendEmail(const vector<Employee>& all_employees,
 
         if (!reminder_body.empty() && !all_emails.empty())
         {
-            sender.SetSubject("message_subject");
+            sender.SetSubject(configReader.GetString("message_subject"));
             sender.SetBody(reminder_body);
             sender.SetRecipients(all_emails);
 
@@ -745,7 +745,7 @@ bool SendLate(const vector<Employee>& all_employees,
 
         if (!reminder_body.empty() && !all_emails.empty())
         {
-            sender.SetSubject("message_subject");
+            sender.SetSubject(configReader.GetString("message_subject"));
             sender.SetBody(reminder_body);
             sender.SetRecipients(all_emails);
 
