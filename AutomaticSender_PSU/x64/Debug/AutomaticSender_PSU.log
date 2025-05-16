@@ -1,0 +1,6 @@
+﻿  AutomaticSender_PSU.cpp
+  Warning, overriding WinCrypt defines
+C:\Users\cocac\source\repos\proektiki\system-development\AutomaticSender_PSU\AutomaticSender_PSU.cpp(159,51): warning C4267: аргумент: преобразование из "size_t" в "int"; возможна потеря данных
+  AutomaticSender_PSU.vcxproj -> C:\Users\cocac\source\repos\proektiki\system-development\x64\Debug\AutomaticSender_PSU.exe
+  "pwsh.exe" не является внутренней или внешней
+  командой, исполняемой программой или пакетным файлом.

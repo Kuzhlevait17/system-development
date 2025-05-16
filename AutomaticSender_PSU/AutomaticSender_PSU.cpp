@@ -1,4 +1,6 @@
-﻿#include <iostream>
+﻿#pragma execution_character_set("utf-8")
+
+#include <iostream>
 #include <Windows.h>
 
 #include <cstring>
@@ -76,7 +78,8 @@ private:
     string subject_;                // Заголовок письма.
     string body_;                   // Тело письма
     vector<string> recipients_;     // Вектор, содержащий всех получателей сообщения.
-    string attachment_path_; // Путь к файлу вложения
+    vector<string> attachment_paths_;
+    // Путь к файлу вложения
 };
 
 
@@ -130,8 +133,9 @@ void EmailSender::AddRecipient(const string& email)
 // Установка вложения
 void EmailSender::SetAttachment(const string& file_path)
 {
-    attachment_path_ = file_path;
+    attachment_paths_.push_back(file_path);
 }
+
 
 // Кодирование файла в base64 (не используется в текущей реализации)
 string EmailSender::base64_encode_file(const string& file_path)
@@ -180,7 +184,7 @@ EmailSender::ReadData::ReadData(const char* str)
 size_t EmailSender::read_function(char* buffer, size_t size, size_t nitems, ReadData* data)
 {
     size_t len = size * nitems;
-    if (len > data->size) 
+    if (len > data->size)
     {
         len = data->size;
     }
@@ -196,19 +200,19 @@ size_t EmailSender::read_function(char* buffer, size_t size, size_t nitems, Read
 bool EmailSender::sendToAll()
 {
     // Проверка обязательных полей
-    if (username_.empty() || password_.empty()) 
+    if (username_.empty() || password_.empty())
     {
         cerr << "Пароль и имя пользователя для отправки сообщений не заполнены." << endl;
         return false;
     }
 
-    if (smtp_server_.empty()) 
+    if (smtp_server_.empty())
     {
         cerr << "Сервер SMTP не определен." << endl;
         return false;
     }
 
-    if (recipients_.empty()) 
+    if (recipients_.empty())
     {
         cerr << "Получатели письма не установлены." << endl;
         return false;
@@ -227,7 +231,7 @@ bool EmailSender::sendToAll()
     }
 
     CURL* curl = curl_easy_init();
-    if (!curl) 
+    if (!curl)
     {
         cerr << "Ошибка при работе curl" << endl;
         return false;
@@ -241,7 +245,7 @@ bool EmailSender::sendToAll()
 
     // Формируем список получателей
     struct curl_slist* recipients = nullptr;
-    for (const auto& email : recipients_) 
+    for (const auto& email : recipients_)
     {
         recipients = curl_slist_append(recipients, email.c_str());
     }
@@ -262,30 +266,22 @@ bool EmailSender::sendToAll()
     curl_mime_type(text_part, "text/html; charset=UTF-8");
 
     // Добавляем вложение, если оно есть
-    if (!attachment_path_.empty()) 
-    {
+    for (const auto& path : attachment_paths_) {
         FILE* file = nullptr;
-        errno_t err = fopen_s(&file, attachment_path_.c_str(), "rb");
+        errno_t err = fopen_s(&file, path.c_str(), "rb");
         if (err != 0 || !file) {
-            cerr << "Не удалось открыть файл вложения: " << attachment_path_ << endl;
-            curl_mime_free(mime);
-            curl_slist_free_all(recipients);
-            curl_easy_cleanup(curl);
-            return false;
+            cerr << "Не удалось открыть файл вложения: " << path << endl;
+            continue;
         }
 
-        // Получаем имя файла
-        size_t last_slash = attachment_path_.find_last_of("\\/");
+        size_t last_slash = path.find_last_of("\\/");
         string filename = (last_slash != string::npos) ?
-            attachment_path_.substr(last_slash + 1) :
-            attachment_path_;
+            path.substr(last_slash + 1) : path;
 
-        // Получаем расширение файла
-        size_t last_dot = attachment_path_.find_last_of('.');
+        size_t last_dot = path.find_last_of('.');
         string extension = (last_dot != string::npos && last_dot > last_slash) ?
-            attachment_path_.substr(last_dot + 1) : "";
+            path.substr(last_dot + 1) : "";
 
-        // Определяем Content-Type по расширению
         string content_type = "application/octet-stream";
         transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
 
@@ -294,22 +290,21 @@ bool EmailSender::sendToAll()
         else if (extension == "gif") content_type = "image/gif";
         else if (extension == "pdf") content_type = "application/pdf";
 
-        // Добавляем часть с вложением
         curl_mimepart* attach_part = curl_mime_addpart(mime);
-        curl_mime_filedata(attach_part, attachment_path_.c_str());
+        curl_mime_filedata(attach_part, path.c_str());
         curl_mime_type(attach_part, content_type.c_str());
         curl_mime_filename(attach_part, filename.c_str());
         curl_mime_encoder(attach_part, "base64");
 
-        // Для изображений можно добавить Content-ID для встраивания в HTML
-        if (content_type.find("image/") != string::npos) 
-        {
+        if (content_type.find("image/") != string::npos) {
             string content_id = "<" + filename + ">";
             curl_mime_headers(attach_part, nullptr, 1);
             curl_mime_name(attach_part, content_id.c_str());
         }
+
         if (file) fclose(file);
     }
+
 
     curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
 
@@ -329,7 +324,7 @@ bool EmailSender::sendToAll()
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
 
-    if (res != CURLE_OK) 
+    if (res != CURLE_OK)
     {
         cerr << "Не удалось отправить сообщение: " << curl_easy_strerror(res) << endl;
         return false;
@@ -350,31 +345,44 @@ struct Employee
     string birthday;
 };
 
-// Функция загрузки шаблона письма
-string loadTemplate(const string& filename, const string& fullName)
+string GenerateTemplate(const string& key, const vector<string>& names, const string& date)
 {
-    ifstream file(filename);
-    if (!file.is_open())
-    {
-        cerr << "Не удалось открыть шаблон: " << filename << endl;
-        return "";
+    string joined_names;
+
+    if (names.size() == 1) {
+        joined_names = names[0];
+    }
+    else {
+        for (size_t i = 0; i < names.size(); ++i) {
+            if (i > 0) joined_names += (i == names.size() - 1) ? " и " : ", ";
+            joined_names += names[i];
+        }
     }
 
-    stringstream buffer;
-    buffer << file.rdbuf();
-    string content = buffer.str();
-
-    // Удаляем BOM, если он есть (UTF-8 BOM: 0xEF,0xBB,0xBF)
-    if (content.size() >= 3 &&
-        static_cast<unsigned char>(content[0]) == 0xEF &&
-        static_cast<unsigned char>(content[1]) == 0xBB &&
-        static_cast<unsigned char>(content[2]) == 0xBF) {
-        content = content.substr(3);
+    if (key == "today_one") {
+        return "<html><body><h1>С Днём Рождения!</h1><p>Сегодня, " + date +
+            ", празднует День рождения наш сотрудник " + joined_names +
+            ". Не забудьте его поздравить! 🎉</p></body></html>";
+    }
+    else if (key == "today_many") {
+        return "<html><body><h1>С Днём Рождения!</h1><p>Сегодня, " + date +
+            ", празднуют День рождения следующие сотрудники: " + joined_names +
+            ". Не забудьте их поздравить! 🎉</p></body></html>";
+    }
+    else if (key == "weekend_one") {
+        return "<html><body><h1>С прошедшим Днём Рождения!</h1><p>В выходные, " + date +
+            ", праздновал День рождения наш сотрудник " + joined_names +
+            ". Не забудьте поздравить его с прошедшим праздником! 🎉</p></body></html>";
+    }
+    else if (key == "weekend_many") {
+        return "<html><body><h1>С прошедшим Днём Рождения!</h1><p>В выходные, " + date +
+            ", праздновали День рождения следующие сотрудники: " + joined_names +
+            ". Не забудьте поздравить их с прошедшим праздником! 🎉</p></body></html>";
     }
 
-    content = regex_replace(content, regex("\\{фио сотрудника\\}"), fullName);
-    return content;
+    return ""; // fallback
 }
+
 
 bool GetBirthdayEmployees(vector<Employee>& birthdayEmployees, sqlite3* db)
 {
@@ -477,9 +485,9 @@ bool ReadAllEmployees(vector<Employee>& employees, sqlite3* db)
     sqlite3_stmt* stmt;
     bool success = false;
 
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) 
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK)
     {
-        while (sqlite3_step(stmt) == SQLITE_ROW) 
+        while (sqlite3_step(stmt) == SQLITE_ROW)
         {
             Employee emp;
             emp.id = sqlite3_column_int(stmt, 0);
@@ -519,7 +527,7 @@ void UpdateLastCongratulated(sqlite3* db, int employee_id)
 
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) 
+    if (rc != SQLITE_OK)
     {
         cerr << "Ошибка при подготовке SQL запроса: " << sqlite3_errmsg(db) << endl;
         return;
@@ -581,153 +589,129 @@ bool IsFirstWorkingDayAfterBreak()
 
 
 // Функция отправки email
-bool sendEmail(const vector<Employee>& recipients, const vector<Employee>& birthdayEmployees, const string& images_folder, sqlite3* db)
+bool sendEmail(const vector<Employee>& all_employees,
+    const vector<Employee>& birthday_employees,
+    const string& images_folder,
+    sqlite3* db)
 {
-    EmailSender SMTP;
-    SMTP.SetSettings(
-        "b1971ss@mail.ru",          // Логин от Mail.ru
-        "pUdQrE3evHbRGNctUwq1",     // Пароль приложения
+    // 1. Получаем текущую дату (дд.мм)
+    time_t now = time(nullptr);
+    tm tm_now;
+    localtime_s(&tm_now, &now);
+    char current_date[6];
+    strftime(current_date, sizeof(current_date), "%d.%m", &tm_now);
+
+    // 2. Настройка SMTP
+    EmailSender sender;
+    sender.SetSettings(
+        "b1971ss@mail.ru",
+        "pUdQrE3evHbRGNctUwq1",
         "smtp://smtp.mail.ru:587",
         "b1971ss@mail.ru");
 
-    // Для именинников
-    for (const auto& emp : birthdayEmployees)
-    {
-        string htmlBody = loadTemplate("birthday_template.html", emp.name);
-        SMTP.SetSubject("С Днем Рождения!");
-        SMTP.SetBody(htmlBody);
-        SMTP.SetRecipients({ emp.email });
-
-        // Добавляем фото, если есть
-        string image_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
-        ifstream file(image_path);
-        if (file.good()) 
-        {
-            SMTP.SetAttachment(image_path);
+    // 3. Отправка уведомлений всем сотрудникам
+    if (!birthday_employees.empty()) {
+        vector<string> all_emails;
+        for (const auto& emp : all_employees) {
+            all_emails.push_back(emp.email);
         }
 
-        cout << "Отправка поздравления на: " << emp.email << " (" << emp.name << ")..." << endl;
-        if (!SMTP.sendToAll())
-        {
-            cerr << "Ошибка при отправке на: " << emp.email << endl;
-        }
+        vector<string> names;
+        for (const auto& emp : birthday_employees) names.push_back(emp.name);
 
-        UpdateLastCongratulated(db, emp.id);
-    }
+        string template_key = (birthday_employees.size() == 1) ? "today_one" : "today_many";
+        string reminder_body = GenerateTemplate(template_key, names, current_date);
 
-    // Для остальных сотрудников (напоминание поздравить)
-    vector<string> other_emails;
-    for (const auto& emp : recipients)
-    {
-        bool isBirthdayEmployee = false;
-        for (const auto& bdEmp : birthdayEmployees)
-        {
-            if (emp.email == bdEmp.email)
-            {
-                isBirthdayEmployee = true;
-                break;
+        if (!reminder_body.empty() && !all_emails.empty()) {
+            sender.SetSubject("Не забудьте поздравить!");
+            sender.SetBody(reminder_body);
+            sender.SetRecipients(all_emails);
+
+            // Прикрепляем фото всех именинников
+            for (const auto& emp : birthday_employees) {
+                string photo_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
+                if (ifstream(photo_path).good()) {
+                    sender.SetAttachment(photo_path);
+                }
+            }
+
+            if (sender.sendToAll()) {
+                cout << "Уведомления отправлены всем сотрудникам: " << all_emails.size() << " адресов." << endl;
+            }
+            else {
+                cerr << "Ошибка отправки уведомлений" << endl;
             }
         }
-        if (!isBirthdayEmployee)
-        {
-            other_emails.push_back(emp.email);
-        }
     }
 
-    if (!other_emails.empty())
-    {
-        SMTP.SetSubject("Не забудьте поздравить коллег!");
-        SMTP.SetBody("Сегодня день рождения у ваших коллег! Не забудьте их поздравить!");
-        SMTP.SetRecipients(other_emails);
-
-        cout << "Отправка напоминаний " << other_emails.size() << " сотрудникам..." << endl;
-        if (!SMTP.sendToAll())
-        {
-            cerr << "Ошибка при отправке напоминаний" << endl;
-        }
-
-
-    }
-
-    cout << "Рассылка завершена." << endl;
     return true;
 }
 
-bool SendLate(const vector<Employee>& recipients, const vector<Employee>& DayOffEmployees, const string& images_folder, sqlite3* db)
+
+bool SendLate(const vector<Employee>& all_employees,
+    const vector<Employee>& missed_employees,
+    const string& images_folder,
+    sqlite3* db)
 {
+    // 1. Получаем текущую дату (дд.мм)
+    time_t now = time(nullptr);
+    tm tm_now;
+    localtime_s(&tm_now, &now);
+    char current_date[6];
+    strftime(current_date, sizeof(current_date), "%d.%m", &tm_now);
 
-    cout << "Количество поздравляемых в SendLate: " << DayOffEmployees.size() << endl << endl;
-
-    EmailSender SMTP2;
-    SMTP2.SetSettings(
-        "b1971ss@mail.ru",          // Логин от Mail.ru
-        "pUdQrE3evHbRGNctUwq1",     // Пароль приложения
+    // 2. Настройка SMTP
+    EmailSender sender;
+    sender.SetSettings(
+        "b1971ss@mail.ru",
+        "pUdQrE3evHbRGNctUwq1",
         "smtp://smtp.mail.ru:587",
         "b1971ss@mail.ru");
 
-    // Для именинников, которые праздновали в выходной день
-    for (const auto& emp : DayOffEmployees)
-    {
-        // string htmlBody = loadTemplate("birthday_template.html", emp.name);
-        SMTP2.SetSubject("С Прошедшим Рождения!");
-        SMTP2.SetBody("Поздравляем вас с прошедшим днем рождения!");
-        SMTP2.SetRecipients({ emp.email });
-
-        // Добавляем фото, если есть
-        string image_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
-        ifstream file(image_path);
-        if (file.good())
-        {
-            SMTP2.SetAttachment(image_path);
+    // 3. Отправка уведомлений всем сотрудникам
+    if (!missed_employees.empty()) {
+        vector<string> all_emails;
+        for (const auto& emp : all_employees) {
+            all_emails.push_back(emp.email);
         }
 
-        cout << "Отправка поздравления на: " << emp.email << " (" << emp.name << ")..." << endl;
-        if (!SMTP2.sendToAll()) 
-        {
-            cerr << "Ошибка при отправке на: " << emp.email << endl;
-        }
+        vector<string> names;
+        for (const auto& emp : missed_employees) names.push_back(emp.name);
 
-        UpdateLastCongratulated(db, emp.id);  // Обновляем дату последнего поздравления
-    }
+        string template_key = (missed_employees.size() == 1) ? "weekend_one" : "weekend_many";
+        string reminder_body = GenerateTemplate(template_key, names, current_date);
 
-    // Для остальных сотрудников (напоминание поздравить)
-    vector<string> other_emails;
-    for (const auto& emp : recipients)
-    {
-        bool isBirthdayEmployee = false;
-        for (const auto& bdEmp : DayOffEmployees)
-        {
-            if (emp.email == bdEmp.email)
-            {
-                isBirthdayEmployee = true;
-                break;
+        if (!reminder_body.empty() && !all_emails.empty()) {
+            sender.SetSubject("Не забудьте поздравить коллег!");
+            sender.SetBody(reminder_body);
+            sender.SetRecipients(all_emails);
+
+            // Прикрепляем фото всех опоздавших именинников
+            for (const auto& emp : missed_employees) {
+                string photo_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
+                if (ifstream(photo_path).good()) {
+
+                    sender.SetAttachment(photo_path);
+                }
+            }
+
+            if (sender.sendToAll()) {
+                cout << "Уведомления отправлены всем сотрудникам: " << all_emails.size() << " адресов." << endl;
+            }
+            else {
+                cerr << "Ошибка отправки уведомлений" << endl;
             }
         }
-        if (!isBirthdayEmployee) 
-        {
-            other_emails.push_back(emp.email);
-        }
     }
 
-    if (!other_emails.empty())
-    {
-        SMTP2.SetSubject("Не забудьте поздравить коллег!");
-        SMTP2.SetBody("В прошедшие нерабочие дни был день рождения у ваших коллег! Не забудьте их поздравить!");
-        SMTP2.SetRecipients(other_emails);
-
-        cout << "Отправка напоминаний " << other_emails.size() << " сотрудникам..." << endl;
-        if (!SMTP2.sendToAll())
-        {
-            cerr << "Ошибка при отправке напоминаний" << endl;
-        }
-    }
-
-    cout << "Рассылка завершена." << endl;
     return true;
-
 }
+
 
 int main() {
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8); // для корректного ввода, если нужно
+
     SetConsoleOutputCP(1251);
     SetConsoleCP(1251);
 
@@ -735,7 +719,7 @@ int main() {
 
     // Открываем базу данных
     sqlite3* db;
-    if (sqlite3_open("C:\\Users\\lukuz\\source\\repos\\AutomaticMailing\\AutomaticMailing\\system-development\\CombineProject\\employees.db", &db) != SQLITE_OK) {
+    if (sqlite3_open("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\SQLiteStudio\\file\\employees.db", &db) != SQLITE_OK) {
         cerr << "Не удалось открыть базу данных: " << sqlite3_errmsg(db) << endl;
         return 1;
     }
@@ -744,9 +728,9 @@ int main() {
     bool columnExists = false;
     const char* pragma_sql = "PRAGMA table_info(employees);";
     sqlite3_stmt* pragma_stmt;
-    if (sqlite3_prepare_v2(db, pragma_sql, -1, &pragma_stmt, nullptr) == SQLITE_OK) 
+    if (sqlite3_prepare_v2(db, pragma_sql, -1, &pragma_stmt, nullptr) == SQLITE_OK)
     {
-        while (sqlite3_step(pragma_stmt) == SQLITE_ROW) 
+        while (sqlite3_step(pragma_stmt) == SQLITE_ROW)
         {
             const unsigned char* colName = sqlite3_column_text(pragma_stmt, 1);
             if (colName && strcmp(reinterpret_cast<const char*>(colName), "last_congratulated") == 0) {
@@ -757,12 +741,12 @@ int main() {
     }
     sqlite3_finalize(pragma_stmt);
 
-    if (!columnExists) 
+    if (!columnExists)
     {
         cout << "Поле 'last_congratulated' не найдено. Добавляем..." << endl;
         const char* alter_sql = "ALTER TABLE employees ADD COLUMN last_congratulated TEXT;";
         char* errMsg = nullptr;
-        if (sqlite3_exec(db, alter_sql, nullptr, nullptr, &errMsg) != SQLITE_OK) 
+        if (sqlite3_exec(db, alter_sql, nullptr, nullptr, &errMsg) != SQLITE_OK)
         {
             cerr << "Ошибка при добавлении поля: " << errMsg << endl;
             sqlite3_free(errMsg);
@@ -802,11 +786,11 @@ int main() {
             cout << "Найдено " << DayOffEmployees.size() << " именинник(ов) в нерабочий день." << endl;
         }
     }
-    else 
+    else
     {
         // Читаем всех сотрудников
         vector<Employee> allEmployees;
-        if (!ReadAllEmployees(allEmployees, db)) 
+        if (!ReadAllEmployees(allEmployees, db))
         {
             cerr << "Не удалось прочитать сотрудников из базы." << endl;
             sqlite3_close(db);
@@ -818,7 +802,7 @@ int main() {
             cout << "Первый рабочий день после выходных. Ищем именинников за выходные..." << endl;
 
             time_t cursor = now - 86400;
-            while (true) 
+            while (true)
             {
                 tm tm_cursor;
                 localtime_s(&tm_cursor, &cursor);
@@ -855,7 +839,7 @@ int main() {
 
             if (!DayOffEmployees.empty()) {
                 cout << "Найдено " << DayOffEmployees.size() << " именинников за выходные." << endl;
-                string images_folder = "C:\\Users\\lukuz\\OneDrive\\Desktop\\Combine2\\CombineProject\\photos";
+                string images_folder = "C:\\Users\\cocac\\source\\repos\\proektiki\\system-development\\photos";
                 if (!SendLate(allEmployees, DayOffEmployees, images_folder, db)) {
                     cerr << "Ошибка при отправке поздравлений за выходные." << endl;
                 }
@@ -902,7 +886,7 @@ int main() {
 
             if (!allEmployees.empty())
             {
-                string images_folder = "C:\\Users\\lukuz\\OneDrive\\Desktop\\Combine2\\CombineProject\\photos";
+                string images_folder = "C:\\Users\\cocac\\source\\repos\\proektiki\\system-development\\photos";
                 if (!sendEmail(allEmployees, birthdayEmployees, images_folder, db))
                 {
                     cerr << "Произошла ошибка при отправке писем" << endl;
@@ -952,7 +936,7 @@ int main() {
 
             if (!allEmployees.empty())
             {
-                string images_folder = "C:\\Users\\lukuz\\OneDrive\\Desktop\\Combine2\\CombineProject\\photos";
+                string images_folder = "C:\\Users\\cocac\\source\\repos\\proektiki\\system-development\\photos";
                 if (!sendEmail(allEmployees, birthdayEmployees, images_folder, db))
                 {
                     cerr << "Произошла ошибка при отправке писем." << endl;
