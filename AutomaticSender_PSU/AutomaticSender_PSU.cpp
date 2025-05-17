@@ -95,15 +95,15 @@ EmailSender::EmailSender()
 EmailSender::~EmailSender()
 {
     curl_global_cleanup();
-}
+}    
 
-// Сеттер настроек
+// Сеттер настроек      
 void EmailSender::SetSettings(const string& username, const string& password,
     const string& smtp_server, const string& mail_from)
 {
     username_ = username;
     password_ = password;
-    smtp_server_ = smtp_server;
+    smtp_server_ = smtp_server;    
     mail_from_ = mail_from;
 }
 
