@@ -13,13 +13,43 @@
 #include <algorithm>
 #include <map>
 
+
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/buffer.h>
 #include <curl/curl.h>
 #include "sqlite3.h"
 
+#define LOG(msg) Logger::Log(msg)
+
 using namespace std;
+
+
+class Logger {
+public:
+    static void Log(const std::string& message) {
+        // Получаем текущее время
+        time_t now = time(nullptr);
+        tm local_time;
+        localtime_s(&local_time, &now);
+        char time_buf[64];
+        strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", &local_time);
+
+        // Финальное сообщение
+        std::string full_message = "[" + std::string(time_buf) + "] " + message;
+
+        // Выводим в консоль
+        std::cout << full_message << std::endl;
+
+        // Пишем в файл
+        std::ofstream log_file("log.txt", std::ios::app);
+        if (log_file.is_open()) {
+            log_file << full_message << std::endl;
+        }
+    }
+};
+
+
 // Класс EmailSender, который отправляет email-сообщения из БД.
 class EmailSender
 {
@@ -156,10 +186,16 @@ private:
 public:
     bool Load(const string& filename) {
         ifstream file(filename);
+
+
         if (!file) {
-            cerr << "Ошибка открытия конфига: " << filename << endl;
+            LOG("Ошибка открытия конфига: " + string(filename));
             return false;
         }
+        else {
+            LOG("конфиг: " + string(filename) + " успешно открыт");
+        }
+
 
         string line;
         while (getline(file, line)) {
@@ -211,10 +247,12 @@ string EmailSender::base64_encode_file(const string& file_path)
 {
     ifstream file(file_path, ios::binary);
     if (!file) {
-        cerr << "Не удалось открыть файл для кодирования: " << file_path << endl;
+        LOG("Не удалось открыть файл для кодирования: " + string(file_path));
         return "";
     }
-
+    else {
+        LOG("файл для кодирования: " + string(file_path) + " успешно открыт");
+    }
     string content((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
 
     BIO* bio, * b64;
@@ -271,41 +309,65 @@ bool EmailSender::sendToAll()
     // Проверка обязательных полей
     if (username_.empty() || password_.empty())
     {
-        cerr << "Пароль и имя пользователя для отправки сообщений не заполнены." << endl;
+        LOG("Пароль и имя пользователя для отправки сообщений не заполнены.");
         return false;
     }
+    else {
+        LOG("Пароль и имя пользователя для отправки сообщений успешно заполнены");
+    }
+
 
     if (smtp_server_.empty())
     {
-        cerr << "Сервер SMTP не определен." << endl;
+        LOG("Сервер SMTP не определен.");
         return false;
     }
+    else {
+        LOG("Сервер SMTP определен.");
+    }
+
+
 
     if (recipients_.empty())
     {
-        cerr << "Получатели письма не установлены." << endl;
-        return false;
+        LOG("Получатели письма не установлены.");
     }
+    else {
+        LOG("Получатели письма установлены.");
+    }
+
 
     if (subject_.empty())
     {
-        cerr << "Тема письма не объявлена." << endl;
+        LOG("Тема письма не объявлена.");
         return false;
     }
+    else {
+        LOG("Тема письма объявлена.");
+    }
+
+
 
     if (body_.empty())
     {
-        cerr << "Тело письма не объявлено." << endl;
+        LOG("Тело письма не объявлено.");
         return false;
     }
+    else {
+        LOG("Тело письма объявлено.");
+    }
+
 
     CURL* curl = curl_easy_init();
     if (!curl)
     {
-        cerr << "Ошибка при работе curl" << endl;
+        LOG("Ошибка при работе cur"); 
+
         return false;
     }
-
+    else {
+        LOG("Нет ошибки при работе cur");
+    }
     // Устанавливаем параметры подключения
     curl_easy_setopt(curl, CURLOPT_USERNAME, username_.c_str());
     curl_easy_setopt(curl, CURLOPT_PASSWORD, password_.c_str());
@@ -339,8 +401,12 @@ bool EmailSender::sendToAll()
         FILE* file = nullptr;
         errno_t err = fopen_s(&file, path.c_str(), "rb");
         if (err != 0 || !file) {
-            cerr << "Не удалось открыть файл вложения: " << path << endl;
+            LOG("Не удалось открыть файл вложения:" + string(path));
+
             continue;
+        }
+        else {
+            LOG("файл вложения: " + string(path) + " успешно открыт");
         }
 
         size_t last_slash = path.find_last_of("\\/");
@@ -393,13 +459,8 @@ bool EmailSender::sendToAll()
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
 
-    if (res != CURLE_OK)
-    {
-        cerr << "Не удалось отправить сообщение: " << curl_easy_strerror(res) << endl;
-        return false;
-    }
 
-    cout << "Email успешно отправлены " << recipients_.size() << " получателям" << endl;
+    LOG("Email успешно отправлены " + to_string(recipients_.size()) + " получателям" );
     return true;
 }
 
@@ -464,21 +525,31 @@ bool GetBirthdayEmployees(vector<Employee>& birthdayEmployees, sqlite3* db)
 
     char today_dd_mm[6];
     snprintf(today_dd_mm, sizeof(today_dd_mm), "%02d.%02d", localTime.tm_mday, localTime.tm_mon + 1);
-    cout << "Ищем сотрудников с днём рождения: " << today_dd_mm << endl;
+    LOG("Ищем сотрудников с днём рождения:  " + string(today_dd_mm) ); 
+
     const char* sql = "SELECT id, name, email, birthday FROM employees WHERE birthday LIKE ? || '%';";
     sqlite3_stmt* stmt;
 
+
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        cerr << "Ошибка подготовки запроса: " << sqlite3_errmsg(db) << endl;
+        LOG("Ошибка подготовки запроса: " + string(sqlite3_errmsg(db))); 
         return false;
     }
+    else {
+        LOG("Нет ошибки подготовки запроса: " + string(sqlite3_errmsg(db)));
+    }
+
 
     if (sqlite3_bind_text(stmt, 1, today_dd_mm, 5, SQLITE_STATIC) != SQLITE_OK)
     {
-        cerr << "Ошибка привязки параметра: " << sqlite3_errmsg(db) << endl;
+        LOG("Ошибка привязки параметра: " + string(sqlite3_errmsg(db)));
         sqlite3_finalize(stmt);
         return false;
     }
+    else {
+        LOG("Нет шибки привязки параметра: " + string(sqlite3_errmsg(db)));
+    }
+
 
     bool found = false;
     while (sqlite3_step(stmt) == SQLITE_ROW)
@@ -519,10 +590,13 @@ bool IsDayOff(int day, int month, int year)
     CURL* curl = curl_easy_init();
     if (!curl)
     {
-        cerr << "Ошибка инициализации CURL" << endl;
+        LOG("Ошибка инициализации CURL ");
         return false;
     }
-
+    else
+    {
+        LOG("Нет ошибки инициализации CURL ");
+    }
     std::string url = "https://isdayoff.ru/api/getdata?year=" + to_string(year) +
         "&month=" + to_string(month) +
         "&day=" + to_string(day);
@@ -535,11 +609,6 @@ bool IsDayOff(int day, int month, int year)
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
 
     CURLcode res = curl_easy_perform(curl);
-    if (res != CURLE_OK) {
-        std::cerr << "Ошибка CURL: " << curl_easy_strerror(res) << std::endl;
-        curl_easy_cleanup(curl);
-        return false;
-    }
 
     curl_easy_cleanup(curl);
 
@@ -575,11 +644,12 @@ bool ReadAllEmployees(vector<Employee>& employees, sqlite3* db)
             }
         }
         sqlite3_finalize(stmt);
+        LOG("Нет ошибки запроса: " + string(sqlite3_errmsg(db)));
     }
     else {
-        cerr << "Ошибка запроса: " << sqlite3_errmsg(db) << endl;
+        LOG("Ошибка запроса: " + string(sqlite3_errmsg(db)));
     }
-
+  
     return success;
 }
 
@@ -602,8 +672,12 @@ void UpdateLastCongratulated(sqlite3* db, int employee_id)
     int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK)
     {
-        cerr << "Ошибка при подготовке SQL запроса: " << sqlite3_errmsg(db) << endl;
+        LOG("Ошибка при подготовке SQL запроса:" + string(sqlite3_errmsg(db)));
         return;
+    }
+    else
+    {
+        LOG("Нет ошибки при подготовке SQL запроса:" + string(sqlite3_errmsg(db)));
     }
 
     sqlite3_bind_text(stmt, 1, currentDate.c_str(), -1, SQLITE_TRANSIENT);
@@ -612,11 +686,11 @@ void UpdateLastCongratulated(sqlite3* db, int employee_id)
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE)
     {
-        cerr << "Ошибка при обновлении last_congratulated: " << sqlite3_errmsg(db) << endl;
+        LOG("Ошибка при обновлении last_congratulated: " + string(sqlite3_errmsg(db))); 
     }
     else
     {
-        cout << "Поле last_congratulated успешно обновлено для сотрудника " << employee_id << endl;
+        LOG("Поле last_congratulated успешно обновлено для сотрудника " + to_string(employee_id));
     }
 
     sqlite3_finalize(stmt);  // Освобождаем ресурсы запроса
@@ -634,8 +708,8 @@ bool IsFirstWorkingDayAfterBreak()
     int today_y = today_tm.tm_year + 1900;
 
     bool todayIsDayOff = IsDayOff(today_d, today_m, today_y);
-    cout << "Сегодня: " << today_d << "." << today_m << "." << today_y << " -> "
-        << (todayIsDayOff ? "Нерабочий день" : "Рабочий день") << endl;
+    LOG("Сегодня: " + to_string(today_d) + "." + to_string(today_m) + "." + to_string(today_y) +
+        " -> " + (todayIsDayOff ? "Нерабочий день" : "Рабочий день"));
 
     if (!todayIsDayOff)
     {
@@ -649,8 +723,7 @@ bool IsFirstWorkingDayAfterBreak()
         int yy = yest_tm.tm_year + 1900;
 
         bool yesterdayIsDayOff = IsDayOff(yd, ym, yy);
-        cout << "Вчера: " << yd << "." << ym << "." << yy << " -> "
-            << (yesterdayIsDayOff ? "Нерабочий день" : "Рабочий день") << endl;
+        LOG("Вчера: " + to_string(yd) + "." + to_string(ym) + "." + to_string(yy) + " -> " + (yesterdayIsDayOff ? "Нерабочий день" : "Рабочий день"));
 
         if (yesterdayIsDayOff)
         {
@@ -711,11 +784,11 @@ bool sendEmail(const vector<Employee>& all_employees,
 
             if (sender.sendToAll())
             {
-                cout << "Уведомления отправлены всем сотрудникам: " << all_emails.size() << " адресов." << endl;
+                LOG("Уведомления отправлены всем сотрудникам: " + to_string(all_emails.size()) + " адресов."); 
             }
             else
             {
-                cerr << "Ошибка отправки уведомлений" << endl;
+                LOG("Ошибка отправки уведомлений ");
             }
         }
     }
@@ -750,12 +823,12 @@ bool SendLate(const vector<Employee>& all_employees,
             sender.SetRecipients(all_emails);
 
             // Отладочный вывод
-            cout << "Папка с изображениями: " << images_folder << endl;
+            LOG("Папка с изображениями: " + string(images_folder)); 
 
             for (const auto& emp : missed_employees) 
             {
                 string photo_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
-                cout << "Проверка файла: " << photo_path << endl;
+                LOG("Проверка файла: " + string(photo_path)); 
 
                 FILE* file = nullptr;
                 errno_t err = fopen_s(&file, photo_path.c_str(), "rb");
@@ -763,21 +836,20 @@ bool SendLate(const vector<Employee>& all_employees,
                 {
                     fclose(file);
                     sender.SetAttachment(photo_path);
-                    cout << "Файл прикреплён: " << photo_path << endl;
+                    LOG("Файл прикреплён: " + string(photo_path)); 
                 }
                 else {
-                    cerr << "Ошибка открытия файла: " << photo_path
-                        << " (код ошибки: " << err << ")" << endl;
+                    LOG("Ошибка открытия файла:  " + string(photo_path) + " код ошибки: " + to_string(err)); 
                 }
             }
 
             if (sender.sendToAll()) 
             {
-                cout << "Уведомления отправлены." << endl;
+                LOG("Уведомления отправлены."); 
             }
             else
             {
-                cerr << "Ошибка отправки." << endl;
+                LOG("Ошибка отправки. " );
             }
         }
     }
@@ -789,27 +861,35 @@ bool SendLate(const vector<Employee>& all_employees,
 int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8); // для корректного ввода, если нужно
-
-
-    cout << "Программа запущена." << endl;
+    LOG(" ");
+    LOG("Программа запущена");
 
     // Загружаем конфигурацию
     ConfigReader config;
     if (!config.Load("config.ini")) {
-        cerr << "Не удалось загрузить конфигурационный файл config.ini" << endl;
+        LOG("Не удалось загрузить конфигурационный файл config.ini");
         return 1;
+    }
+    else {
+        LOG("конфигурационный файл config.ini успешно загружен.");
     }
     
     if (config.GetString("db_path").empty()) {
-        cerr << "Ошибка: Параметр 'db_path' не найден в конфигурации" << endl;
+        LOG("Ошибка: Параметр 'db_path' не найден в конфигурации"); 
         return 1;
+    }
+    else {
+        LOG("Параметр 'db_path' успешно найден в конфигурации");
     }
 
     // 4. Открытие БД
     sqlite3* db;
     if (sqlite3_open( config.GetString("db_path").c_str(), &db) != SQLITE_OK) {
-        cerr << "Не удалось открыть базу данных: " << sqlite3_errmsg(db) << endl;
+        LOG("Не удалось открыть базу данных: " + string ( sqlite3_errmsg(db)));
         return 1;
+    }
+    else {
+        LOG("база данных: " + string(sqlite3_errmsg(db)) + " успешно открыта.");
     }
 
     // Проверка и добавление поля last_congratulated
@@ -831,25 +911,24 @@ int main() {
 
     if (!columnExists)
     {
-        cout << "Поле 'last_congratulated' не найдено. Добавляем..." << endl;
+        LOG("Поле 'last_congratulated' не найдено. Добавляем..."); 
         const char* alter_sql = "ALTER TABLE employees ADD COLUMN last_congratulated TEXT;";
         char* errMsg = nullptr;
         if (sqlite3_exec(db, alter_sql, nullptr, nullptr, &errMsg) != SQLITE_OK)
         {
-            cerr << "Ошибка при добавлении поля: " << errMsg << endl;
+            LOG("Ошибка при добавлении поля: " + string(errMsg));
             sqlite3_free(errMsg);
         }
         else
         {
-            cout << "Поле добавлено успешно." << endl;
+            LOG("Поле добавлено успешно."); 
         }
     }
 
     time_t now = time(nullptr);
     tm localTime;
     localtime_s(&localTime, &now);
-    cout << "Текущая дата: " << localTime.tm_mday << "." << localTime.tm_mon + 1 << "." << localTime.tm_year + 1900 << endl;
-
+    LOG("Текущая дата: " + to_string(localTime.tm_mday) + "." + to_string ( localTime.tm_mon + 1) + "." + to_string ( localTime.tm_year + 1900));
     int day = localTime.tm_mday;
     int month = localTime.tm_mon + 1;
     int year = localTime.tm_year + 1900;
@@ -859,19 +938,16 @@ int main() {
 
     if (RestDay)
     {
-        cout << "Сегодня выходной или праздник." << endl;
-
-        if (!GetBirthdayEmployees(DayOffEmployees, db))
-        {
-            cout << "Ошибка при поиске именинников в нерабочий день." << endl;
-        }
+        LOG("Сегодня выходной или праздник.");
+ 
         if (DayOffEmployees.empty())
         {
-            cout << "Именинников в нерабочие дни не было." << endl;
+            LOG("Именинников в нерабочие дни не было."); 
         }
+
         else
         {
-            cout << "Найдено " << DayOffEmployees.size() << " именинник(ов) в нерабочий день." << endl;
+            LOG("Найдено " + to_string(DayOffEmployees.size()) + " именинник(ов) в нерабочий день." );
         }
     }
     else
@@ -880,14 +956,17 @@ int main() {
         vector<Employee> allEmployees;
         if (!ReadAllEmployees(allEmployees, db))
         {
-            cerr << "Не удалось прочитать сотрудников из базы." << endl;
+            LOG("Не удалось прочитать сотрудников из базы."); 
             sqlite3_close(db);
             return 1;
+        }
+        else {
+            LOG("Успешно удалось прочитать сотрудников из базы.");
         }
 
         if (IsFirstWorkingDayAfterBreak())
         {
-            cout << "Первый рабочий день после выходных. Ищем именинников за выходные..." << endl;
+            LOG("Первый рабочий день после выходных. Ищем именинников за выходные..."); 
 
             time_t cursor = now - 86400;
             while (true)
@@ -930,29 +1009,28 @@ int main() {
 
             if (!DayOffEmployees.empty()) 
             {
-                cout << "Найдено " << DayOffEmployees.size() << " именинников за выходные." << endl;
+                LOG("Найдено" + to_string(DayOffEmployees.size()) + " именинников за выходные."); 
                 string images_folder = config.GetString("photo_path").c_str();
                 if (!SendLate(allEmployees, DayOffEmployees, images_folder, config.GetString("smtp_username"), config.GetString("smtp_password"), \
                     config.GetString("smtp_server"), config.GetString("mail_from"), db, config))
                 {
-                    cerr << "Ошибка при отправке поздравлений за выходные." << endl;
+                    LOG("Ошибка при отправке поздравлений за выходные."); 
+                }
+                else {
+                    LOG("Нет ошибок при отправке поздравлений за выходные.");
                 }
             }
             else
             {
-                cout << "Именинников за выходные не найдено." << endl;
+                LOG("Именинников за выходные не найдено."); 
             }
 
-            if (!GetBirthdayEmployees(birthdayEmployees, db)) 
+            if (birthdayEmployees.empty()) 
             {
-                cout << "Ошибка при поиске именинников." << endl;
-            }
-            else if (birthdayEmployees.empty()) 
-            {
-                cout << "Сегодня нет именинников." << endl;
+                LOG("Сегодня нет именинников."); 
             }
             else {
-                cout << "Найдены именинники: " << endl;
+                LOG("Найдены именинники : ");
                 for (const auto& emp : birthdayEmployees)
                 {
                     cout << "  " << emp.id << ": " << emp.name << " (" << emp.email << ")" << endl;
@@ -966,7 +1044,10 @@ int main() {
                 if (!sendEmail(allEmployees, birthdayEmployees, images_folder, config.GetString("smtp_username"), config.GetString("smtp_password"), \
                     config.GetString("smtp_server"), config.GetString("mail_from"), db, config))
                 {
-                    cerr << "Произошла ошибка при отправке писем" << endl;
+                    LOG("Произошла ошибка при отправке писем"); 
+                }
+                else {
+                    LOG("Нет ошибок при отправке писем");
                 }
             }
 
@@ -974,17 +1055,13 @@ int main() {
         else
         {
             //// Сегодня обычный рабочий день, проверим именинников
-            if (!GetBirthdayEmployees(birthdayEmployees, db))
+           if (birthdayEmployees.empty())
             {
-                cout << "Ошибка при поиске именинников." << endl;
-            }
-            else if (birthdayEmployees.empty())
-            {
-                cout << "Сегодня нет именинников." << endl;
+                LOG("Сегодня нет именинников."); 
             }
             else
             {
-                cout << "Найдены именинники: " << endl;
+                LOG("Найдены именинники: "); 
                 for (const auto& emp : birthdayEmployees)
                 {
                     cout << "  " << emp.id << ": " << emp.name << " (" << emp.email << ")" << endl;
@@ -998,12 +1075,19 @@ int main() {
                 if (!sendEmail(allEmployees, birthdayEmployees, images_folder, config.GetString("smtp_username"), config.GetString("smtp_password"), \
                     config.GetString("smtp_server"), config.GetString("mail_from"), db, config))
                 {
-                    cerr << "Произошла ошибка при отправке писем." << endl;
+                    LOG("Произошла ошибка при отправке писем."); 
+                }
+                else {
+                    LOG("Нет ошибок при отправке писем");
                 }
             }
         }
     }
 
     sqlite3_close(db);
+    LOG("Программа завершена.");
+    LOG(" ");
     return 0;
+    
+
 }
