@@ -53,7 +53,7 @@ public:
 // Класс EmailSender, который отправляет email-сообщения из БД.
 class EmailSender
 {
-public:  
+public:
     // Конструктор по умолчанию  
     // (гарантируем, что поля класса будут иметь определенные значения).
     // (инициализируем объект класса во время его создания).
@@ -125,7 +125,7 @@ EmailSender::EmailSender()
 EmailSender::~EmailSender()
 {
     curl_global_cleanup();
-}    
+}
 
 // Сеттер настроек      
 void EmailSender::SetSettings(const string& username, const string& password,
@@ -133,7 +133,7 @@ void EmailSender::SetSettings(const string& username, const string& password,
 {
     username_ = username;
     password_ = password;
-    smtp_server_ = smtp_server;    
+    smtp_server_ = smtp_server;
     mail_from_ = mail_from;
 }
 
@@ -361,12 +361,12 @@ bool EmailSender::sendToAll()
     CURL* curl = curl_easy_init();
     if (!curl)
     {
-        LOG("Ошибка при работе cur"); 
+        LOG("Ошибка при работе curl");
 
         return false;
     }
     else {
-        LOG("Нет ошибки при работе cur");
+        LOG("Нет ошибки при работе curl");
     }
     // Устанавливаем параметры подключения
     curl_easy_setopt(curl, CURLOPT_USERNAME, username_.c_str());
@@ -460,7 +460,7 @@ bool EmailSender::sendToAll()
     curl_slist_free_all(headers);
 
 
-    LOG("Email успешно отправлены " + to_string(recipients_.size()) + " получателям" );
+    LOG("Email успешно отправлены " + to_string(recipients_.size()) + " получателям");
     return true;
 }
 
@@ -487,18 +487,16 @@ string GenerateTemplate(ConfigReader& configReader,
     }
 
     vector<string> names;
-    vector<string> dates;  // Храним все уникальные даты
+    vector<string> dates; 
     for (const auto& emp : employees) {
         names.push_back(emp.name);
-        string emp_date = emp.birthday.substr(0, 5);  // Формат "DD.MM"
+        string emp_date = emp.birthday.substr(0, 5); 
 
-        // Добавляем дату, если её ещё нет в списке
         if (find(dates.begin(), dates.end(), emp_date) == dates.end()) {
             dates.push_back(emp_date);
         }
     }
 
-    // Формируем строку с именами
     string joined_names;
     if (names.size() == 1) {
         joined_names = names[0];
@@ -510,10 +508,9 @@ string GenerateTemplate(ConfigReader& configReader,
         }
     }
 
-    // Формируем строку с датами
     string joined_dates;
     if (!date_override.empty()) {
-        joined_dates = date_override;  // Если передана переопределённая дата (например, текущая)
+        joined_dates = date_override;  
     }
     else if (dates.size() == 1) {
         joined_dates = dates[0];
@@ -525,7 +522,6 @@ string GenerateTemplate(ConfigReader& configReader,
         }
     }
 
-    // Заменяем плейсхолдеры в шаблоне
     size_t pos;
     while ((pos = template_str.find("{names}")) != string::npos) {
         template_str.replace(pos, 7, joined_names);
@@ -546,14 +542,14 @@ bool GetBirthdayEmployees(vector<Employee>& birthdayEmployees, sqlite3* db)
 
     char today_dd_mm[6];
     snprintf(today_dd_mm, sizeof(today_dd_mm), "%02d.%02d", localTime.tm_mday, localTime.tm_mon + 1);
-    LOG("Ищем сотрудников с днём рождения:  " + string(today_dd_mm) ); 
+    LOG("Ищем сотрудников с днём рождения:  " + string(today_dd_mm));
 
     const char* sql = "SELECT id, name, email, birthday FROM employees WHERE birthday LIKE ? || '%';";
     sqlite3_stmt* stmt;
 
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        LOG("Ошибка подготовки запроса: " + string(sqlite3_errmsg(db))); 
+        LOG("Ошибка подготовки запроса: " + string(sqlite3_errmsg(db)));
         return false;
     }
     else {
@@ -568,7 +564,7 @@ bool GetBirthdayEmployees(vector<Employee>& birthdayEmployees, sqlite3* db)
         return false;
     }
     else {
-        LOG("Нет шибки привязки параметра: " + string(sqlite3_errmsg(db)));
+        LOG("Нет Ошибки привязки параметра: " + string(sqlite3_errmsg(db)));
     }
 
 
@@ -670,7 +666,7 @@ bool ReadAllEmployees(vector<Employee>& employees, sqlite3* db)
     else {
         LOG("Ошибка запроса: " + string(sqlite3_errmsg(db)));
     }
-  
+
     return success;
 }
 
@@ -707,7 +703,7 @@ void UpdateLastCongratulated(sqlite3* db, int employee_id)
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE)
     {
-        LOG("Ошибка при обновлении last_congratulated: " + string(sqlite3_errmsg(db))); 
+        LOG("Ошибка при обновлении last_congratulated: " + string(sqlite3_errmsg(db)));
     }
     else
     {
@@ -734,7 +730,6 @@ bool IsFirstWorkingDayAfterBreak()
 
     if (!todayIsDayOff)
     {
-        // Вчера
         time_t yesterday = now - 86400;
         tm yest_tm;
         localtime_s(&yest_tm, &yesterday);
@@ -762,18 +757,13 @@ bool sendEmail(const vector<Employee>& all_employees,
     sqlite3* db,
     ConfigReader& configReader)
 {
-    // Получаем текущую дату
     time_t now = time(nullptr);
     tm tm_now;
     localtime_s(&tm_now, &now);
     char current_date[6];
     strftime(current_date, sizeof(current_date), "%d.%m", &tm_now);
-
-    // Настройка SMTP
     EmailSender sender;
     sender.SetSettings(smtp_username, smtp_password, smtp_server, mail_from);
-
-    // Отправка уведомлений всем сотрудникам
     if (!birthday_employees.empty()) {
         vector<string> all_emails;
         for (const auto& emp : all_employees)
@@ -785,7 +775,7 @@ bool sendEmail(const vector<Employee>& all_employees,
             names.push_back(emp.name);
         }
         string template_key = (birthday_employees.size() == 1) ? "today_one" : "today_many";
-        string reminder_body = GenerateTemplate(configReader, template_key, birthday_employees, current_date); // Передаём список сотрудников
+        string reminder_body = GenerateTemplate(configReader, template_key, birthday_employees, current_date);
 
         if (!reminder_body.empty() && !all_emails.empty())
         {
@@ -793,8 +783,7 @@ bool sendEmail(const vector<Employee>& all_employees,
             sender.SetBody(reminder_body);
             sender.SetRecipients(all_emails);
 
-            // Прикрепляем фото всех именинников
-            for (const auto& emp : birthday_employees) 
+            for (const auto& emp : birthday_employees)
             {
                 string photo_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
                 if (ifstream(photo_path).good())
@@ -805,7 +794,7 @@ bool sendEmail(const vector<Employee>& all_employees,
 
             if (sender.sendToAll())
             {
-                LOG("Уведомления отправлены всем сотрудникам: " + to_string(all_emails.size()) + " адресов."); 
+                LOG("Уведомления отправлены всем сотрудникам: " + to_string(all_emails.size()) + " адресов.");
             }
             else
             {
@@ -829,7 +818,7 @@ bool SendLate(const vector<Employee>& all_employees,
     if (!missed_employees.empty())
     {
         vector<string> all_emails;
-        for (const auto& emp : all_employees) 
+        for (const auto& emp : all_employees)
         {
             all_emails.push_back(emp.email);
         }
@@ -843,34 +832,33 @@ bool SendLate(const vector<Employee>& all_employees,
             sender.SetBody(reminder_body);
             sender.SetRecipients(all_emails);
 
-            // Отладочный вывод
-            LOG("Папка с изображениями: " + string(images_folder)); 
+            LOG("Папка с изображениями: " + string(images_folder));
 
-            for (const auto& emp : missed_employees) 
+            for (const auto& emp : missed_employees)
             {
                 string photo_path = images_folder + "\\" + to_string(emp.id) + ".jpg";
-                LOG("Проверка файла: " + string(photo_path)); 
+                LOG("Проверка файла: " + string(photo_path));
 
                 FILE* file = nullptr;
                 errno_t err = fopen_s(&file, photo_path.c_str(), "rb");
-                if (err == 0 && file != nullptr) 
+                if (err == 0 && file != nullptr)
                 {
                     fclose(file);
                     sender.SetAttachment(photo_path);
-                    LOG("Файл прикреплён: " + string(photo_path)); 
+                    LOG("Файл прикреплён: " + string(photo_path));
                 }
                 else {
-                    LOG("Ошибка открытия файла:  " + string(photo_path) + " код ошибки: " + to_string(err)); 
+                    LOG("Ошибка открытия файла:  " + string(photo_path) + " код ошибки: " + to_string(err));
                 }
             }
 
-            if (sender.sendToAll()) 
+            if (sender.sendToAll())
             {
-                LOG("Уведомления отправлены."); 
+                LOG("Уведомления отправлены.");
             }
             else
             {
-                LOG("Ошибка отправки. " );
+                LOG("Ошибка отправки. ");
             }
         }
     }
@@ -923,18 +911,13 @@ int main() {
         sqlite3_close(db);
         return 1;
     }
-
-    // Ищем именинников на текущий день
     vector<Employee> birthdayEmployees;
     GetBirthdayEmployees(birthdayEmployees, db);
-
-    // Проверяем, первый ли это рабочий день после выходных
     bool isFirstWorkDayAfterBreak = !isDayOff && IsFirstWorkingDayAfterBreak();
 
-    // 1. Обработка именинников за выходные (если сегодня первый рабочий день)
     if (isFirstWorkDayAfterBreak) {
         vector<Employee> dayOffEmployees;
-        time_t cursor = now - 86400; // Начинаем с вчера
+        time_t cursor = now - 86400;
 
         while (true) {
             tm tm_cursor;
@@ -943,10 +926,8 @@ int main() {
             int m = tm_cursor.tm_mon + 1;
             int y = tm_cursor.tm_year + 1900;
 
-            // Если день рабочий - прекращаем поиск
             if (!IsDayOff(d, m, y)) break;
 
-            // Ищем именинников за этот выходной день
             char dd_mm[6];
             snprintf(dd_mm, sizeof(dd_mm), "%02d.%02d", d, m);
 
@@ -967,10 +948,9 @@ int main() {
                 }
                 sqlite3_finalize(stmt);
             }
-            cursor -= 86400; // Переходим к предыдущему дню
+            cursor -= 86400;
         }
 
-        // Отправляем письмо за выходные (если есть именинники)
         if (!dayOffEmployees.empty()) {
             LOG("Найдено именинников за выходные: " + to_string(dayOffEmployees.size()));
             SendLate(allEmployees, dayOffEmployees,
@@ -983,7 +963,6 @@ int main() {
         }
     }
 
-    // 2. Отправляем письмо за текущий день (если есть именинники и сегодня не выходной)
     if (!isDayOff && !birthdayEmployees.empty()) {
         LOG("Найдено именинников сегодня: " + to_string(birthdayEmployees.size()));
         sendEmail(allEmployees, birthdayEmployees,
