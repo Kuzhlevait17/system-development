@@ -31,13 +31,13 @@
 - **ОС:** Windows.
 
 ## ⚙️ Установка и запуск
-
+- [**Инструкция**](https://github.com/Kuzhlevait17/system-development/blob/main/Инструкция%20по%20установке%20и%20использованию.docx)
 
 ## 🗃️ Структура базы данных (SQLite)
 
 Таблица employees:
 
-| id | name   | email | birthday | last_updated |
+| id | name   | email | birthday | last_congratulated |
 |----|--------|-------|----------|--------------|
 
 
@@ -45,4 +45,3 @@
 
 - **Windows Task Scheduler:**  
     - Запуск исполняемого файла .exe каждый день в 9:00.
-    - 
